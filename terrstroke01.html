@@ -1,0 +1,153 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Terrain Stroke Test</title>
+  </head>
+  <body style='background: #000'>
+    <canvas id='display' width='1' height='1' />
+
+    <script>
+
+	// a, b are objects: var point = {x: 0, y: 0};
+	function rect(a, b, style) {
+	  if (b.y < a.y) return;
+	  // this draws the rectangle to the screen
+	  ctx.fillStyle = style;
+	  // x upper left, y upper left, width, height
+	  //ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+	  ctx.strokeStyle="green";
+	  //ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+	  //ctx.beginPath();
+	  //ctx.moveTo(a.x, a.y);
+	  //ctx.lineTo(b.x, b.y);
+	  //ctx.stroke();
+	  ctx.strokeRect(a.x-3, a.y-3, 1, 1);
+	}
+	
+	function mydist(a, b) {
+		return Math.sqrt((b.x-a.x)*(b.x-a.x) + (b.y-a.y)*(b.y-a.y));
+	}
+
+      var display = document.getElementById('display');
+	// getContext() method returns an object that provides methods and properties for drawing on the canvas
+      var ctx = display.getContext('2d');
+      var width = display.width = window.innerWidth;
+      var height = display.height = window.innerHeight;
+	
+	// define stroke width
+	// seed points
+	// o---o---o
+	// | x | x |
+	// o---o---o
+	// | x | x |
+	// o---o---o
+	// seed points are single points, corners average of 4 (or stroke width)
+	// gradient seed to each corner point, only for lower points, disregard higher points; no line at local minimum
+	
+	// corner points
+	var p0 = {x: 200, y: 200};
+	var p1 = {x: 250, y: 300};
+	var p2 = {x: 300, y: 300};
+	var p3 = {x: 500, y: 200};
+	var cpoint = {x: 0, y: 0};
+	// simulate ridge
+	var r0 = {x: 220, y: 150};
+	var r1 = {x: 350, y: 300};
+	// closest point on ridge line from Bezier point
+	var pmin = {x: 0, y: 0};
+	// tangents at p0, p3: automatically defined by vectors from p0 to p1 and p3 to p2
+	// assume gradients at p0 and p3 given
+	var grad0 = {x: 1, y: 2};
+	var grad3 = {x: -1, y: -1};
+	// determine the right size: p1 and p2 should be in similar distance magnitude as p3 is from p0
+	//var dist0 = Math.sqrt((p3.x - p0.x) * (p3.x - p0.x) + (p3.y - p0.y) * (p3.y - p0.y)) / 4.0;
+	var dist0 = mydist(p0, p3) / 4.0;
+	p1.x = p0.x + grad0.x * dist0;
+	p1.y = p0.y + grad0.y * dist0;
+	p2.x = p3.x + grad3.x * dist0;
+	p2.y = p3.y + grad3.y * dist0;
+	// create directions strokes from p0 to p3: let t vary from 0 to 1 in 100 increments
+	// B(t) = (1-t)**3 p0 + 3(1 - t)**2 t P1 + 3(1-t)t**2 P2 + t**3 P3
+	// x = (1-t)*(1-t)*(1-t)*p0x + 3*(1-t)*(1-t)*t*p1x + 3*(1-t)*t*t*p2x + t*t*t*p3x;
+	// y = (1-t)*(1-t)*(1-t)*p0y + 3*(1-t)*(1-t)*t*p1y + 3*(1-t)*t*t*p2y + t*t*t*p3y;
+	
+	// draw tangent vectors
+	ctx.beginPath();
+	ctx.moveTo(p0.x,p0.y);
+	ctx.lineTo(p1.x, p1.y);
+	ctx.moveTo(p3.x,p3.y);
+	ctx.lineTo(p2.x, p2.y);
+	ctx.lineWidth=3;
+	ctx.strokeStyle="blue";
+	ctx.stroke();
+	
+	// draw ridge
+	ctx.beginPath();
+	ctx.moveTo(r0.x,r0.y);
+	ctx.lineTo(r1.x, r1.y);
+	ctx.lineWidth=3;
+	ctx.strokeStyle="red";
+	ctx.stroke();
+	
+	// draw stroke
+	// any ridges on path?
+	// line from x0 to x1: k=(y0-y1)/(x0-x1) d=y0-k x0
+	var kp=(p0.y - p3.y) / (p0.x - p3.x); // line between stroke points - gradient
+	var dp=p0.y - kp * p0.x; // line between stroke points intercept
+	var kr=(r0.y - r1.y) / (r0.x - r1.x); // ridge gradient
+	var dr=r0.y - kr * r0.x; // ridge intercept
+	// todo: check for ridge and new stroke being parallel
+	// calculate intersection point
+	var cross = {x: ((dr - dp) / (kp - kr)), y: (kp * (dr - dp) / (kp - kr) + dp)};
+	//console.log('cross: ' + cross);
+	var drawflag = true; // used to discontinue path if it is broken by ridge
+	// draw p0-cross
+	ctx.beginPath();
+	ctx.moveTo(p0.x,p0.y);
+	ctx.lineTo(cross.x, cross.y);
+	ctx.lineWidth=1;
+	ctx.strokeStyle="purple";
+	ctx.stroke();
+	
+	ctx.beginPath();
+	ctx.moveTo(p0.x,p0.y);
+	ctx.strokeStyle="green";
+	ctx.lineWidth=10;
+	// draw Bezier between p0 and p3 plus extrapolated beyond p0 and p3
+	// draw between p0 and p3, then expand beyond p0 and p3 till either subdivision limit reached or path occupied
+	for(var t=-0.1; t<=1.1;t+=0.1) {
+		cpoint.x = (1-t)*(1-t)*(1-t)*p0.x + 3*(1-t)*(1-t)*t*p1.x + 3*(1-t)*t*t*p2.x + t*t*t*p3.x;
+		cpoint.y = (1-t)*(1-t)*(1-t)*p0.y + 3*(1-t)*(1-t)*t*p1.y + 3*(1-t)*t*t*p2.y + t*t*t*p3.y;
+		// only check for ridge collision if collision point in relevant area (to save some calc time)
+		if((cross.x > Math.min(p0.x, p3.x, r0.x, r1.x) || cross.x < Math.max(p0.x, p3.x, r0.x, r1.x)) && (cross.y > Math.min(p0.y, p3.y, r0.y, r1.y) || cross.y < Math.max(p0.y, p3.y, r0.y, r1.y))) {
+			//if(mydist(cpoint, cross) < 50.0) continue; // stop path if close to ridge and try next point
+			// find closest point on ridge from current Bezier curve point
+			pmin.x = (cpoint.x + kr * cpoint.y - kr * dr) / (1.0 + kr * kr);
+			pmin.y = kr * pmin.x + dr;
+			if(mydist(cpoint, pmin) < 20.0) {
+				drawflag = false;
+				continue; // stop path if close to ridge and try next point
+			}
+			//console.log(pmin + ' dist ' + mydist(cpoint, pmin));
+		}
+		//ctx.moveTo(top.x, top.y);
+		//console.log("dist cross-cpoint: " + mydist(cpoint, cross) + " cross x: " + cross.x + " cross y: " + cross.y);
+		if(drawflag) ctx.lineTo(cpoint.x, cpoint.y)
+		else {
+			ctx.moveTo(cpoint.x, cpoint.y);
+			drawflag = true;
+		}
+	}
+	ctx.stroke();
+	
+
+	// we need to keep a parallel image storage to process stroke collisions
+	
+	
+	
+	
+	
+	 
+    </script>
+  </body>
+</html>

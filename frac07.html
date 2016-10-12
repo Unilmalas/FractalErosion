@@ -1,0 +1,644 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Terrain Demo</title>
+  </head>
+  <body style='background: #000'>
+    <canvas id='display' width='1' height='1' />
+
+    <script>
+		// fractal terrain code from Hunter Loftis
+		// see http://www.playfuljs.com/realistic-terrain-in-130-lines/
+		
+      function Terrain(detail) {
+		this.size = Math.pow(2, detail) + 1;
+		this.max = this.size - 1;
+		this.map = new Float32Array(this.size * this.size);
+		// water height array (d in model)
+		this.water = new Float32Array(this.size * this.size);
+		// water increases (d1 in model)
+		  this.waterinc = new Float32Array(this.size * this.size);
+		  // updated water height (d2)
+		  this.d2 = new Float32Array(this.size * this.size);
+		  // flows (f in model)
+		  this.flowl = new Float32Array(this.size * this.size);
+		  this.flowr = new Float32Array(this.size * this.size);
+		  this.flowt = new Float32Array(this.size * this.size);
+		  this.flowb = new Float32Array(this.size * this.size);
+		  // velocity arrays (u and v)
+		  this.u = new Float32Array(this.size * this.size);
+		  this.v = new Float32Array(this.size * this.size);
+		  // sediment layer
+		  this.sediment = new Float32Array(this.size * this.size);
+		  // sediment updated layer
+		  this.sediment1 = new Float32Array(this.size * this.size);
+		}
+
+	// get terrain height at x, y
+      Terrain.prototype.get = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.map[x + this.size * y];
+      };
+
+	// set terrain height at x, y
+      Terrain.prototype.set = function(x, y, val) {
+        this.map[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	  
+	// get water height at x, y
+      Terrain.prototype.getw = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.water[x + this.size * y];
+      };
+
+	// set water height at x, y
+      Terrain.prototype.setw = function(x, y, val) {
+        this.water[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	  
+	// get water increase at x, y
+      Terrain.prototype.getwinc = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.waterinc[x + this.size * y];
+      };
+
+	// set water increase at x, y
+      Terrain.prototype.setwinc = function(x, y, val) {
+        this.waterinc[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	  
+	// get water updated at x, y
+      Terrain.prototype.getd2 = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.d2[x + this.size * y];
+      };
+
+	// set water updated at x, y
+      Terrain.prototype.setd2 = function(x, y, val) {
+        this.d2[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	  
+	// get flows at x, y
+      Terrain.prototype.getfl = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.flowl[x + this.size * y];
+      };
+	 Terrain.prototype.getfr = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.flowr[x + this.size * y];
+      };
+	Terrain.prototype.getft = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.flowt[x + this.size * y];
+      };
+	Terrain.prototype.getfb = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.flowb[x + this.size * y];
+      };
+
+	// set flows at x, y
+      Terrain.prototype.setfl = function(x, y, val) {
+        this.flowl[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	Terrain.prototype.setfr = function(x, y, val) {
+        this.flowr[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	Terrain.prototype.setft = function(x, y, val) {
+        this.flowt[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	Terrain.prototype.setfb = function(x, y, val) {
+        this.flowb[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	
+	// get u, v at x, y
+      Terrain.prototype.getu = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.u[x + this.size * y];
+      };
+	Terrain.prototype.getv = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.v[x + this.size * y];
+      };
+
+	// set u, v at x, y
+      Terrain.prototype.setu = function(x, y, val) {
+        this.u[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	Terrain.prototype.setv = function(x, y, val) {
+        this.v[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	  
+	// get sediment at x, y
+      Terrain.prototype.gets = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.sediment[x + this.size * y];
+      };
+
+	// set sediment at x, y
+      Terrain.prototype.sets = function(x, y, val) {
+        this.sediment[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	  
+	// get sediment at x, y
+      Terrain.prototype.gets1 = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.sediment1[x + this.size * y];
+      };
+
+	// set sediment at x, y
+      Terrain.prototype.sets1 = function(x, y, val) {
+        this.sediment1[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+
+	 // object initialization
+     Terrain.prototype.generate = function(roughness) {
+        var self = this;
+		var smax = self.max; // performance
+		
+		// set the corners to a 'seed' value which will influence the rest of the rendering.
+		// This would start all the corners halfway up the cube
+		for (x = 0; x < smax; x += 1) {
+              this.set(x, 0, smax / 2);
+        }
+		// leave the other side of the cube as it was
+        this.set(this.max, this.max, 0);
+        this.set(0, this.max, smax / 2);
+
+		// subdivision calls
+        divide(this.max);
+		
+		// recursively look at smaller and smaller divisions of the height map
+		// At each division, we'll split the map into squares and update their 
+		// center points during the square phase. Then, we'll split the map into 
+		// diamonds and update their center points during the diamond phase
+        function divide(size) {
+          var x, y, half = size / 2;
+          var scale = roughness * size; // size of offsets decreases with divisions
+		  
+          if (half < 1) return;
+		  
+          for (y = half; y < smax; y += size) {
+            for (x = half; x < smax; x += size) {
+              square(x, y, half, Math.random() * scale * 2 - scale);
+            }
+          }
+		  
+          for (y = 0; y <= smax; y += half) {
+            for (x = (y + half) % size; x <= smax; x += size) {
+				diamond(x, y, half, Math.random() * scale * 2 - scale);
+            }
+          }
+          divide(size / 2); // recursive call
+        }
+
+        function average(values) {
+          var valid = values.filter(function(val) { return val !== -1; });
+          var total = valid.reduce(function(sum, val) { return sum + val; }, 0);
+          return total / valid.length;
+        }
+		
+		// square phase averages four corner points before applying a random offset
+        function square(x, y, size, offset) {
+          var ave = average([
+            self.get(x - size, y - size),   // upper left
+            self.get(x + size, y - size),   // upper right
+            self.get(x + size, y + size),   // lower right
+            self.get(x - size, y + size)    // lower left
+          ]);
+          self.set(x, y, ave + offset);
+        }
+		
+		// diamond phase averages four edge points before applying a random offset
+        function diamond(x, y, size, offset) {
+          var ave = average([
+            self.get(x, y - size),      // top
+            self.get(x + size, y),      // right
+            self.get(x, y + size),      // bottom
+            self.get(x - size, y)       // left
+          ]);
+          self.set(x, y, ave + offset);
+        }
+      };
+	
+	// *************** Erosion ***************************************
+	Terrain.prototype.erode = function(niter) {
+		var A = 1.0; // cross section of pipe
+		var g = 9.81; // gravitation constant
+		var l = 1.0; // length of virtual pipe
+		var Kc = 3.2; // sediment transport capacity
+		var Ks = 1.0 / (1.0 + niter); // dissolving constant
+		var Kd = 0.3 / (1.0 + niter); // deposition constant
+		var Ke = 0.01; // evaporation constant
+		
+		var K = 3.0; // scaling factor
+		var lx = 1.0; // distance grid points x-direction
+		var ly = 1.0; // distance grid points y-direction
+		
+		var d1 = 0.0; // intermediate water height
+		var dhl = 0.0; // height difference left
+		var dhr = 0.0; // height difference right
+		var dht = 0.0; // height difference top
+		var dhb = 0.0; // height difference bottom
+		var d2 = 0.0; // updated water height
+		var dVol = 0.0; // net water volume change
+		var dWx = 0.0; // average amount of water passing through cell x-direction
+		var dWy = 0.0; // average amount of water passing through cell y-direction
+		var cap = 0.0; // sediment transport capacity
+		var dhx=dhy=0.0; // height difference x, y
+		var sinalpha = 0.0; // sin of local tile tilt angle
+		var dt = 1.0; // time increment
+		
+		var Kr = 1.0; // rainfall per cell per dt
+		var minw = 0.1; // minimum water height (to prevent div0)
+		var minf = 0.1; // minimum flow (div0)
+		var d2 = 0.0; // updated water height
+		var u = 0.0; // water velocity x
+		var v = 0.0; // water velocity y
+		
+		/* Hydraulic Erosion Model (Mei/Decaudin/Hu)
+		b...terrain height
+		d...water height
+		constants:
+			A cross section of pipe
+			g gravitation constant
+			l length of virtual pipe
+			Kc sediment transport capacity
+			Ks dissolving constant
+			Kd deposition constant
+			Ke evaporation constant
+		0 given:
+			bt(x,y) = terrain height at t=0
+			rt = water arriving at (x,y) in dt (from rain and fixed river sources)
+		1 d1 <- WaterIncrement(dt): d1(x,y)=dt(x,y)+dt rt(x,y)
+		2 d2, f t+dt, v t+dt <- FlowSim(d1, bt, ft): d2=d1+dV/lX/lY, f=..., u=2*dW/(d1+d2)/lY
+		3 b t+dt, s1 <- ErosionDeposition(v t+dt, bt, st): C=Kc*sin(alpha(x,y))*|v|, C<>st
+		4 s t+dt <- SedimentTransport(s1, v t+dt): s t+dt=s1(x-u dt, y-v dt)
+		5 d t+dt <- Evaporation(d2): d t+dt=d2*(1-Ke*dt)
+		*/
+		
+		// todo: array inits
+		
+		// perf increase
+		var fconst = dt * A * g / l;
+		
+		// outer time loop (dt = 0.1, 10 iterations = 1 sec)
+		for (var itime = 0; itime < niter; itime++) {
+			var tmax = this.max; // performance
+			// calculate water increases d1 and flows f for all cells
+			for (var xi = 0; xi < tmax; xi++) {
+				for (var yi = 0; yi < tmax; yi++) {
+					
+					// 1 d1 <- WaterIncrement(dt): d1(x,y)=dt(x,y)+dt rt(x,y)
+					d1 = this.getw(xi, yi) + Math.random()*Kr; // todo: improve rain and add water sources
+					//if(xi>80 && xi<90 && yi>80 && yi<90)
+					//	d1 = this.getw(xi, yi) + Math.random() * Kr + 5.0 * Kr;
+					//else
+					//	d1 = this.getw(xi, yi) + Math.random()*Kr;
+					
+					// 2 d2, f t+dt, v t+dt <- FlowSim(d1, bt, ft): d2=d1+dV/lX/lY, f=..., u=2*dW/(d1+d2)/lY
+					dhl = this.get(Math.max(xi-1, 0), yi);
+					dhr = this.get(Math.min(xi+1, this.size), yi);
+					dht = this.get(xi, Math.min(yi+1, this.size));
+					dhb = this.get(xi, Math.max(yi-1, 0));
+					// update flows from t to t+dt
+					this.setfl(xi, yi, Math.max(0.0, this.getfl(xi, yi) + fconst * dhl));
+					this.setfr(xi, yi, Math.max(0.0, this.getfr(xi, yi) + fconst * dhr));
+					this.setft(xi, yi, Math.max(0.0, this.getft(xi, yi) + fconst * dht));
+					this.setfb(xi, yi, Math.max(0.0, this.getfb(xi, yi) + fconst * dhb));
+					// normalize flows
+					K = (this.getfl(xi, yi)+this.getfr(xi, yi)+this.getft(xi, yi)+this.getfb(xi, yi));
+					if(K<0.0)
+						K = Math.min(1.0, d1 * lx * ly / K / dt);
+					else
+						K = Math.min(1.0, d1 * lx * ly / Math.max(K, minf) / dt);
+					this.setfl(xi, yi, K * this.getfl(xi, yi));
+					this.setfr(xi, yi, K * this.getfr(xi, yi));
+					this.setft(xi, yi, K * this.getft(xi, yi));
+					this.setfb(xi, yi, K * this.getfb(xi, yi));
+					//console.log("1st loop b: " + this.get(xi, yi) + " fl: " + K * this.getfl(xi, yi));
+					//console.log("1st loop d: " + this.getw(xi, yi) + " d1: " + d1);
+				} // yi
+			} // xi
+			
+			// based on flows for all cells calculate flows, flow velocity and arosion deposition
+			for (var xi = 0; xi < tmax; xi++) {
+				for (var yi = 0; yi < tmax; yi++) {
+					// 2 continued d2, f t+dt, v t+dt <- FlowSim(d1, bt, ft): d2=d1+dV/lX/lY, f=..., u=2*dW/(d1+d2)/lY
+					// net water volume change dVol for cell xi, yi
+					dVol = this.getfr(Math.max(xi-1, 0), yi) + this.getft(Math.max(xi-1, 0), Math.max(yi-1, 0)) + 
+						this.getfl(Math.min(xi+1, this.size), yi) + this.getfb(xi, Math.min(yi+1, this.size));
+					dVol -= (this.getfl(xi, yi) + this.getfr(xi, yi) + this.getft(xi, yi) + this.getfb(xi, yi));
+					dVol *= dt;
+					// update water height (d1 = this.getw(xi, yi))
+					d2 = this.getw(xi, yi) + dVol / lx / ly;
+					this.setd2(xi, yi, d2);
+					//console.log("2nd loop dVol: " + dVol + " d2: " + d2);
+					
+					// average amount of water passing through cell x- and y-direction
+					dWx = (this.getfr(Math.max(xi-1, 0), yi) - this.getfl(xi, yi) + this.getfr(xi, yi) - this.getfl(Math.min(xi+1, this.size), yi)) / 2.0;
+					dWy = (this.getft(xi, Math.max(yi-1, 0)) - this.getfb(xi, yi) + this.getft(xi, yi) - this.getfb(xi, Math.min(yi+1, this.size))) / 2.0;
+					//console.log("2nd loop dWx: " + dWx + " dWy: " + dWy);
+					
+					// components of water velocity v=(u,v)
+					u = 2.0 * dWx / Math.max(this.getw(xi, yi) + this.getd2(xi, yi), minw) / ly;
+					v = 2.0 * dWy / Math.max(this.getw(xi, yi) + this.getd2(xi, yi), minw) / lx;
+					this.setu(xi, yi, u); // velocity x-direction
+					this.setv(xi, yi, v); // velocity y-direction
+					
+					// 3 b t+dt, s1 <- ErosionDeposition(v t+dt, bt, st): C=Kc*sin(alpha(x,y))*|v|, C<>st
+					dhx = this.get(Math.min(xi+1, this.size), yi) - this.get(xi, yi);
+					dhy = this.get(xi, Math.min(yi+1, this.size)) - this.get(xi, yi);
+					sinalpha = ((dhx / Math.sqrt(1.0 + dhx * dhx)) + (dhy / Math.sqrt(1.0 + dhy * dhy))) / 2.0;
+					cap = Kc * sinalpha * Math.sqrt(u * u + v * v);
+					//console.log("2nd loop sinalpha: " + sinalpha + " Cap: " + cap + " u " + u + " v " + v);
+					
+					var delta = cap - this.gets(xi, yi); // capacity of sediment minus current sediment
+					var locavrg = (this.get(xi-1, yi-1) + this.get(xi-1, yi+1) + this.get(xi+1, yi+1) + this.get(xi+1, yi-1)) / 4;
+					//var locavrg = this.get(xi, yi) + (dhx + dhy) / 2.0;
+					if(cap > this.gets(xi, yi)) { // soil dissolved and added to suspended sediment
+						//this.set(xi, yi, Math.max(this.get(xi, yi) - Ks * delta, this.get(xi, yi) * 0.95));
+						//this.set(xi, yi, Math.max(this.get(xi, yi) - Ks * delta, locavrg * 0.92));
+						//-> this.set(xi, yi, this.get(xi, yi) - Ks * delta);
+						//console.log(0.8 * this.get(xi, yi) + " Ks " + 0.2 * Ks * delta);
+						if((this.get(xi, yi) - Ks * delta) < locavrg * 0.8) {
+							this.set(xi, yi, this.get(xi, yi) - Ks * delta * 0.6);
+							this.set(Math.min(xi+1, this.size), yi, this.get(Math.min(xi+1, this.size), yi) - Ks * delta * 0.2);
+							this.set(xi, Math.min(yi+1, this.size), this.get(xi, Math.min(yi+1, this.size)) - Ks * delta * 0.2);
+						} else {
+							this.set(xi, yi, this.get(xi, yi) - Ks * delta);
+						}
+						this.sets1(xi, yi, this.gets(xi, yi) + Ks * delta);
+					} else { // deposit
+						//this.set(xi, yi, Math.min(this.get(xi, yi) + Kd * delta, this.get(xi, yi) * 1.05));
+						//this.set(xi, yi, Math.min(this.get(xi, yi) + Kd * delta, locavrg * 1.08));
+						// -> this.set(xi, yi, this.get(xi, yi) + Kd * delta);
+						//console.log(0.8 * this.get(xi, yi) + " Kd " + 0.2 * Kd * delta);
+						if((this.get(xi, yi) + Kd * delta) > locavrg * 1.2) {
+							this.set(xi, yi, this.get(xi, yi) + Kd * delta * 0.6);
+							this.set(Math.min(xi+1, this.size), yi, this.get(Math.min(xi+1, this.size), yi) + Kd * delta * 0.2);
+							this.set(xi, Math.min(yi+1, this.size), this.get(xi, Math.min(yi+1, this.size)) + Kd * delta * 0.2);
+						} else {
+							this.set(xi, yi, this.get(xi, yi) + Kd * delta);
+						}
+						this.sets1(xi, yi, this.gets(xi, yi) - Kd * delta);
+					}			
+				} // yi
+			} // xi	
+			
+			// calculate updated sediment layer and evaporation
+			for (var xi = 0; xi < tmax; xi++) {
+				for (var yi = 0; yi < tmax; yi++) {	
+					// 4 s t+dt <- SedimentTransport(s1, v t+dt): s at t+dt=s1(x-u dt, y-v dt)
+					this.sets(xi, yi, this.gets1(xi - Math.max(Math.floor(this.getu(xi, yi) * dt), 1), yi - Math.max(Math.floor(this.getv(xi, yi) * dt)), 1));
+					//console.log("3rd loop s: " + this.gets(xi, yi));
+					
+					// 5 d t+dt <- Evaporation(d2): d t+dt=d2*(1-Ke*dt)
+					// limit terrain changes (still to erratic...)
+					var wtrnew = this.getd2(xi, yi) * (1.0 - Ke * dt);
+					//if(Math.abs(terrnew) > Math.abs(this.getw(xi, yi)) * 0.1) wtrnew = this.getw(xi, yi);
+					this.setw(xi, yi, wtrnew); // d is the water height
+					//this.set(xi, yi, Math.floor(0.3 * wtrnew + 0.7 * this.getw(xi, yi))); // temp: average with previous height
+					//console.log("3rd loop height adjustment d: " + this.getd2(xi, yi) * (1.0 - Ke * dt));
+				} // yi
+			} // xi
+		} // itime
+	};
+	
+	// render ******************************************************
+      Terrain.prototype.draw = function(ctx, width, height) {
+        var self = this;
+		var tsize = this.size;
+        //var waterVal = this.size * 0.3;
+		
+		// nested loops that drew rectangles from the 'back' (y = 0) to the 'front' (y = this.size) of our map
+        for (var y = 0; y < tsize; y++) {
+          for (var x = 0; x < tsize; x++) {
+            var val = this.get(x, y);
+            var top = project(x, y, val);
+            //var bottom = project(x + 1, y, 0);
+
+            //var style = brightness(x, y, this.get(x + 1, y) - val);
+			
+			if (x == 0 && y == 0) {
+				ctx.beginPath();
+				ctx.strokeStyle="green";
+			}
+			
+		    if (x == 0) {
+				ctx.stroke();
+				ctx.beginPath();
+				ctx.strokeStyle="green";
+				ctx.moveTo(top.x, top.y);
+				//console.log("y==0 " + top.x + " " + top.y);
+			} else {
+				ctx.lineTo(top.x, top.y);
+				//rect(top, bottom, style);
+			}
+          }
+        }
+
+        function rect(a, b, style) {
+          if (b.y < a.y) return;
+		  // this draws the rectangle to the screen
+          ctx.fillStyle = style;
+		  // x upper left, y upper left, width, height
+          //ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+		  ctx.strokeStyle="green";
+		  //ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+		  //ctx.beginPath();
+		  //ctx.moveTo(a.x, a.y);
+		  //ctx.lineTo(b.x, b.y);
+		  //ctx.stroke();
+		  ctx.strokeRect(a.x-1, a.y-1, 2, 2);
+        }
+		
+		// set point brightness
+        function brightness(x, y, slope) {
+          if (y === self.max || x === self.max) return '#000';
+		  // compare our current height value against the next point's height value to find a slope
+		  // draw brighter rectangles for higher slopes to fill one side with light and the other with shadow
+		  // ~~ is double NOT bitwise operator, faster for Math.floor()
+          var b = ~~(slope * 60) + 128;
+          return ['rgba(', b, ',', b, ',', b, ',1)'].join('');
+        }
+		
+		// rotate view to diamond
+        function iso(x, y) {
+          return {
+            x: 0.5 * (self.size + x - y),
+            y: 0.5 * (x + y)
+          };
+        }
+		
+		// perspective: divide horizonal and vertical position by depth so that higher depths 
+		// render closer to the origin (ie, further away objects appear smaller)
+        function project(flatX, flatY, flatZ) {
+          var point = iso(flatX, flatY);
+          var x0 = width * 0.5;
+          var y0 = height * 0.2;
+          var z = self.size * 3 - flatZ + point.y * 1.75;
+          var x = (point.x - self.size * 0.5) * 12;
+          var y = (self.size - point.y) * 0.01 + 1;
+
+          return {
+            x: x0 + x / y,
+            y: y0 + z / y
+          };
+        }
+      };
+	  
+	  
+	// create directions strokes ******************************************
+    Terrain.prototype.genstrokes = function(ctx, width, height) {
+		// set division hierarchy
+		var divh = 0;
+		var maxhie = 4; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
+		// note: therefore h = (ln(screen_size) - ln(interval lgth)) / ln2
+		
+		// stroke torage: 1-dim arrays, data set by hierarchy, i.e. [-data h=0- --data h=1-- ---...]
+		var ntrokesperh = 8; // so many strokes per hierarchy
+		var strkstrindex = [0, 1, 2, 3, 4]; // hierarchy levels for strokes (hard coded, maxhie = 4)
+		var strkstrlen = strkstrindex.map(function(h) { // returns numbers of squares times strokes per square
+			return (ntrokesperh * Math.pow(4, h+1));
+		});
+		var strkseedstrlen = strkstrindex.map(function(h) { // returns numbers of squares (for seed points)
+			return Math.pow(4, h+1);
+		});
+		var strkstrlenc strkstrindex.map(function(h) { // returns cumulative lengths for strokes
+			return (h==0) ? (strkstrlen[h]) : (strkstrlen[h-1] + strkstrlen[h]);
+		});
+		var strkseedstrlenc strkstrindex.map(function(h) { // returns cumulative lengths for seed points
+			return (h==0) ? (strkseedstrlen[h]) : (strkseedstrlen[h-1] + strkseedstrlen[h]);
+		});
+		
+		// init data fields: 1-dim arrays, hierarchy o, then 1 etc., lengths increase due to subdivisions
+		this.x = new Int16Array(strkstrlenc[maxhie]); // stroke points
+		this.y = new Int16Array(strkstrlenc[maxhie]);
+		this.xs = new Int16Array(strkseedstrlenc[maxhie]); // seed points
+		this.ys = new Int16Array(strkseedstrlenc[maxhie]);
+		
+		// create an access function that fetches all values for a given hierarchy
+		/* function gethierdata(myh) {
+			var loweri = (myh==0) ? 0 : strkstrlenc[myh-1];
+			var upperi = strkstrlenc[myh];
+			for(i=loweri; i<upperi; i++) {
+				outstr1 += x[i] + " ";
+			}
+			return 0;
+		} */
+		
+		var size = this.size / 2;
+		var half = size / 2;
+		// main hierarchy loop
+		for(h=0;h<maxhie;h++) {
+			// starting at h=0 determine seed points, calculate strokes
+			var dh = [0.0, 0.0, 0.0, 0.0]; // height difference in 4 directions
+			// x = half -> size + half
+			// for each seed point: while (!strokeend) xp += grad_x and xm -=grad_x (stroke in both directions simultaneously)
+			var strokeend = false;
+			// for now only first seed point
+			var xs[strkseedstrlenc[h]] = half; // todo: need to set all seed points: 4 for h=0, then 16,...
+			var ys[strkseedstrlenc[h]] = half;
+			var direct = 't';
+			var currheight = 0.0;
+			var lastmax = 0.0;
+			var lastmin = 0.0;
+			var lasti = 0;
+			var deltalim = 50.0; // limit we accept as "same height"
+			
+			while(!strokeend) {
+				currheight = this.get(xs[strkseedstrlenc[h]],ys[strkseedstrlenc[h]]);
+				//  0
+				// 3 1
+				//  2
+				// calculate gradient at xs, ys and find direction of steepest inc/dec
+				// simultaneously check for max/min and ridges
+				dh[3] = this.get(xs - half / 2, ys) - currheight;
+				dh[1] = this.get(xs + half / 2, ys) - currheight;
+				dh[0] = this.get(xs, ys + half / 2) - currheight;
+				dh[2] = this.get(xs, ys - half / 2) - currheight;
+				for(i=0; i<4; i++) {
+					if(Math.abs(dh[i]) > lastmax) {
+						lastmax = dh[i];
+						lasti = i;
+					}
+					if(Math.abs(dh[i]) < lastmin) {
+						lastmin = dh[i];
+					}
+				}
+				// need to follow one direction first, then the other (other has one more stop condition: reversion to other direction)
+				// check stroke stop: A local minimum/maximum, B ridges, C drawing limit (border), D higher-order stroke
+				
+				// A local minimum/maximum
+				if(currheight > lastmax || currheight < lastmin) {
+					strokeend = true;
+					break;
+				}
+				// B ridges
+				// ridge 0-2
+				if((Math.abs(dh[0] - dh[2]) < deltalim) && (dh[1] < currheight) && (dh[3] < currheight)) {
+					strokeend = true;
+					break;
+				}
+				// ridge 1-3
+				if((Math.abs(dh[1] - dh[3]) < deltalim) && (dh[0] < currheight) && (dh[2] < currheight)) {
+					strokeend = true;
+					break;
+				}			
+				
+				// stroke endpoint direction 0
+				switch(lasti) {
+					case 0:
+						xn0 = xs;
+						yn0 = ys + half / 2;
+						break;
+					case 1:
+						xn0 = xs + half / 2;
+						yn0 = ys;
+						break;
+					case 2:
+						xn0 = xs;
+						yn0 = ys - half / 2;
+						break;
+					case 3:
+						xn0 = xs - half / 2;
+						yn0 = ys;
+						break;
+				}
+				// this does not work for both directions at once
+				// C drawing limit (border)
+				if((xn0 > size) || (yn0 > size) || (xn0 < 0) || (yn0 < 0)) {
+					strokeend = true;
+					break;
+				}
+				
+				// prepare next subdivision
+				size /= 2;
+				half /= 2;
+				
+			} // stroke loop
+		} // mainh hierarchy loop
+
+		// adjust for lighting by running through stroke hierarchy images
+	
+	};
+
+    var display = document.getElementById('display');
+	// getContext() method returns an object that provides methods and properties for drawing on the canvas
+    var ctx = display.getContext('2d');
+    var width = display.width = window.innerWidth;
+    var height = display.height = window.innerHeight;
+	  
+	// putting it all together
+	// create fractal terrain as base *************************************
+    var terrain = new Terrain(6); // details in powers of 2
+    terrain.generate(1.8);
+	// erode terrain for more realism *************************************
+	terrain.erode(200); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points, 4000 for detail 6)
+	
+	// render terrain ******************************************************
+    terrain.draw(ctx, width, height);
+	  
+    </script>
+  </body>
+</html>
