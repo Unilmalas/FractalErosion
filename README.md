@@ -7,4 +7,5 @@ a horrible spaghetti-code to test
 
 next steps:
 - clean up this mess
+- erosion still not how it should be, very sensitive to parameters...
 - terrain visualization via direction of slope and lightning (Buchin et al.)
