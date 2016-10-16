@@ -14,6 +14,8 @@
 		  this.size = Math.pow(2, detail) + 1;
 		  this.max = this.size - 1;
 		  this.map = new Float32Array(this.size * this.size);
+		  // backup terrain height
+		  this.mapbu = new Float32Array(this.size * this.size);
 		  // water height array (d in model)
 		  this.water = new Float32Array(this.size * this.size);
 		  // water increases (d1 in model)
@@ -45,6 +47,17 @@
         this.map[x + this.size * y] = val; // only 1-dim arrays in js
       };
 	  
+	// get terrain height backup at x, y
+      Terrain.prototype.getbu = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.mapbu[x + this.size * y];
+      };
+
+	// set terrain height backup at x, y
+      Terrain.prototype.setbu = function(x, y, val) {
+        this.mapbu[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	  
 	// get water height at x, y
       Terrain.prototype.getw = function(x, y) {
         if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
@@ -56,13 +69,13 @@
         this.water[x + this.size * y] = val; // only 1-dim arrays in js
       };
 	  
-	// get water updated at x, y
+	// get water at x, y
       Terrain.prototype.getd1 = function(x, y) {
         if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
         return this.d1[x + this.size * y];
       };
 
-	// set water updated at x, y
+	// set water at x, y
       Terrain.prototype.setd1 = function(x, y, val) {
         this.d1[x + this.size * y] = val; // only 1-dim arrays in js
       };
@@ -244,15 +257,15 @@
 	Terrain.prototype.erode = function(niter) {
 		var A = 1.0; // cross section of pipe
 		var g = 9.81; // gravitation constant
-		var l = 3.5; // length of virtual pipe
-		var Kc = 2.1; // sediment transport capacity
+		var l = 2.5; // length of virtual pipe
+		var Kc = 5.1; // sediment transport capacity
 		var Ks = 0.1; // dissolving constant
-		var Kd = 0.6; // deposition constant
+		var Kd = 0.4; // deposition constant
 		var Ke = 0.01; // evaporation constant
 		
 		var K = 1.0; // scaling factor
-		var lx = 1.0; // distance grid points x-direction
-		var ly = 1.0; // distance grid points y-direction
+		var lx = 1.5; // distance grid points x-direction
+		var ly = 1.5; // distance grid points y-direction
 		
 		// d...water height
 		var b = 0.0; // terrain height at cell x, y
@@ -271,7 +284,7 @@
 		var sinalpha = 0.0; // sin of local tile tilt angle
 		var dt = 1.0; // time increment
 		
-		var Kr = 0.1; // rainfall per cell per dt
+		var Kr = 1.5; // rainfall per cell per dt
 		var minw = 0.1; // minimum water height (to prevent div0)
 		var minf = 0.1; // minimum flow (to prevent div0)
 		var d2 = 0.0; // updated water height
@@ -279,7 +292,7 @@
 		var v = 0.0; // water velocity y
 		
 		var fmax = 100.0; // max outflow from cell in any direction
-		var capmax = 50.0; // max soil carry capacity
+		var capmax = 80.0; // max soil carry capacity
 		var sinamin = 1.5; // max tilt (absolute)
 
 		/* Hydraulic Erosion Model (Mei/Decaudin/Hu)
@@ -315,10 +328,11 @@
 			// calculate water increases d1 for all cells
 			for (var xi = 0; xi < tmax; xi++) {
 				for (var yi = 0; yi < tmax; yi++) {
+					
 					// 1 d1 <- WaterIncrement(dt): d1(x,y)=dt(x,y)+dt rt(x,y); getw = getdt
 					this.setd1(xi, yi, Math.max(this.getw(xi, yi) + Math.random()*Kr, 0.0)); // todo: improve rain and add water sources, max() should not be necessary!
-					/*if(xi>80 && xi<90 && yi>80 && yi<90) { // adding a water source
-						this.setd1(xi, yi, this.getw(xi, yi) + Math.random() * Kr + 10.0 * Kr);
+					/*if(xi>(tmax/2-5) && xi<(tmax/2+5) && yi>(tmax/2-5) && yi<(tmax/2+5)) { // adding a water source
+						this.setd1(xi, yi, this.getw(xi, yi) + Math.random() * Kr + 100.0 * Kr);
 					} else
 						this.setd1(xi, yi, this.getw(xi, yi) + Math.random() * Kr); */
 				}
@@ -399,11 +413,17 @@
 					this.setv(xi, yi, v); // velocity y-direction
 					
 					// 3 b t+dt, s1 <- ErosionDeposition(v t+dt, bt, st): C=Kc*sin(alpha(x,y))*|v|, C<>st
-					dhx = this.get(Math.min(xi+1, tmax), yi) - b;
-					dhy = this.get(xi, Math.min(yi+1, tmax)) - b;
-					sinalpha = (dhx + dhy) / 2.0;
-					sinalpha = Math.sign(sinalpha) * Math.min(sinamin, sinalpha);
-					//console.log('dhx ' + dhx + ' dhy ' + dhy + ' sinalpha ' + sinalpha);
+					// local tilt: sin a = sqrt(dhx^2+dhy^2) / sqrt(1 + dhx^2 + dhy^2)
+					dhx = this.get(Math.min(xi+1, tmax), yi) - this.get(Math.max(xi-1, 0), yi);
+					dhy = this.get(xi, Math.min(yi+1, tmax)) - this.get(xi, Math.max(yi-1, 0));
+					dhx *= dhx/4.0;
+					dhy *= dhy/4.0;
+					sinalpha = 1.0 / (1.0 + dhx + dhy);
+					//console.log('1: ' + sinalpha.toPrecision(2));
+					sinalpha = Math.sqrt(1.0 - sinalpha);
+					//console.log('2: ' + sinalpha.toPrecision(2));
+					sinalpha = Math.sign(sinalpha) * Math.min(sinamin, Math.abs(sinalpha));
+					//console.log('3: dhx ' + dhx.toPrecision(2) + ' dhy ' + dhy.toPrecision(2) + ' sinalpha ' + sinalpha.toPrecision(2));
 					cap = Kc * sinalpha * Math.sqrt(u * u + v * v);
 					cap = Math.sign(cap) * Math.min(capmax, Math.abs(cap));
 					//console.log("2nd loop sinalpha: " + sinalpha.toPrecision(2) + " Cap: " + cap.toPrecision(2) + " u " + u.toPrecision(2) + " v " + v.toPrecision(2));
@@ -413,16 +433,16 @@
 					//var locavrg = this.get(xi, yi) + (dhx + dhy) / 2.0;
 					
 					//console.log('cap ' + cap.toPrecision(2) + ' soil s ' + this.gets(xi, yi) + ' delta ' + delta.toPrecision(2));
-					if(delta > 0.0) { // soil dissolved and added to suspended sediment
+					if(delta > parseFloat(0.0)) { // soil dissolved and added to suspended sediment
 						// delta is positive - set new terrain height and adjust sediment layer
-						this.set(xi, yi, b - Ks * delta);
+						this.setbu(xi, yi, b - Ks * delta);
 						this.sets1(xi, yi, this.gets(xi, yi) + Ks * delta);
-						//console.log('dissolve h: ' + b + ' Ks * delta ' + Ks * delta);
+						//console.log('dissolve h: ' + b.toPrecision(2) + ' delta ' + delta.toPrecision(2));
 					} else { // deposit soil
 						// delta is negative - set new terrain height and adjust sediment layer
-						this.set(xi, yi, b - Kd * delta);
+						this.setbu(xi, yi, b - Kd * delta);
 						this.sets1(xi, yi, this.gets(xi, yi) + Kd * delta);
-						//console.log('dissolve h: ' + b + ' Ks * delta ' + (Kd * delta).toPrecision(2));
+						//console.log('deposit h: ' + b.toPrecision(2) + ' delta ' + delta.toPrecision(2));
 					}			
 				} // yi
 			} // xi	
@@ -442,6 +462,9 @@
 					this.setw(xi, yi, wtrnew); // d is the water height
 					//this.set(xi, yi, Math.floor(0.3 * wtrnew + 0.7 * this.getw(xi, yi))); // temp: average with previous height
 					//console.log("3rd loop height adjustment d: " + this.getd2(xi, yi) * (1.0 - Ke * dt));
+					
+					// copy terrain height from backup to main
+					this.set(xi, yi, this.getbu(xi, yi));
 				} // yi
 			} // xi
 		} // itime
@@ -677,7 +700,7 @@
 	//terrain.generate_test(); // test terrain to adjust erosion parameters
     terrain.generate(1.6);
 	// erode terrain for more realism *************************************
-	terrain.erode(7); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points, 4000 for detail 6) 100 drops work ok
+	terrain.erode(5); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points, 4000 for detail 6) 100 drops work ok
 	
 	// render terrain ******************************************************
     terrain.draw(ctx, width, height);
