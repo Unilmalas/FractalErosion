@@ -27,6 +27,11 @@
 		  this.flowr = new Float32Array(this.size * this.size);
 		  this.flowt = new Float32Array(this.size * this.size);
 		  this.flowb = new Float32Array(this.size * this.size);
+		  // flows temp copy (f in model)
+		  this.flowlt = new Float32Array(this.size * this.size);
+		  this.flowrt = new Float32Array(this.size * this.size);
+		  this.flowtt = new Float32Array(this.size * this.size);
+		  this.flowbt = new Float32Array(this.size * this.size);
 		  // velocity arrays (u and v)
 		  this.u = new Float32Array(this.size * this.size);
 		  this.v = new Float32Array(this.size * this.size);
@@ -121,6 +126,38 @@
       };
 	Terrain.prototype.setfb = function(x, y, val) {
         this.flowb[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+
+	// get flows temp at x, y
+      Terrain.prototype.getflt = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.flowlt[x + this.size * y];
+      };
+	 Terrain.prototype.getfrt = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.flowrt[x + this.size * y];
+      };
+	Terrain.prototype.getftt = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.flowtt[x + this.size * y];
+      };
+	Terrain.prototype.getfbt = function(x, y) {
+        if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+        return this.flowbt[x + this.size * y];
+      };
+
+	// set flows temp at x, y
+      Terrain.prototype.setflt = function(x, y, val) {
+        this.flowlt[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	Terrain.prototype.setfrt = function(x, y, val) {
+        this.flowrt[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	Terrain.prototype.setftt = function(x, y, val) {
+        this.flowtt[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+	Terrain.prototype.setfbt = function(x, y, val) {
+        this.flowbt[x + this.size * y] = val; // only 1-dim arrays in js
       };
 	
 	// get u, v at x, y
@@ -258,14 +295,14 @@
 		var A = 1.0; // cross section of pipe
 		var g = 9.81; // gravitation constant
 		var l = 1.0; // length of virtual pipe
-		var Kc = 3.5; // sediment transport capacity
-		var Ks = 0.1; // dissolving constant
-		var Kd = 0.4; // deposition constant
+		var Kc = 5.5; // sediment transport capacity
+		var Ks = 0.08; // dissolving constant
+		var Kd = 0.1; // deposition constant
 		var Ke = 0.01; // evaporation constant
 		
 		var K = 1.0; // scaling factor
-		var lx = 0.8; // distance grid points x-direction
-		var ly = 0.8; // distance grid points y-direction
+		var lx = 1.0; // distance grid points x-direction
+		var ly = 1.0; // distance grid points y-direction
 		
 		// d...water height
 		var b = 0.0; // terrain height at cell x, y
@@ -284,15 +321,16 @@
 		var sinalpha = 0.0; // sin of local tile tilt angle
 		var dt = 0.0001; // time increment - VERY important!!! (smaller->more cont. trenches)
 		
-		var Kr = 1.1; // rainfall per cell per dt
+		var Kr = 1.0; // rainfall per cell per dt
 		var minw = 0.001; // minimum water height (to prevent div0)
 		var minf = 0.001; // minimum flow (to prevent div0)
 		var d2 = 0.0; // updated water height
 		var u = 0.0; // water velocity x
 		var v = 0.0; // water velocity y
 		
-		var capmax = 35.0; // max soil carry capacity
-		var sinamin = 1.5; // max tilt (absolute)
+		var capmax = 30.0; // max soil carry capacity
+		var sinamin = 1.0; // max tilt (absolute)
+		var maxdxy = 10; // max cell distance for transport in dt
 
 		/* Hydraulic Erosion Model (Mei/Decaudin/Hu)
 		b...terrain height
@@ -319,10 +357,10 @@
 		
 		// perf increase
 		var fconst = dt * A * g / l;
+		var tmax = this.max; // performance
 		
 		// outer time loop (dt = 0.1, 10 iterations = 1 sec)
 		for (var itime = 0; itime < niter; itime++) {
-			var tmax = this.max; // performance
 			
 			// calculate water increases d1 for all cells
 			for (var xi = 0; xi < tmax; xi++) {
@@ -349,35 +387,46 @@
 					// 2 d2, f t+dt, v t+dt <- FlowSim(d1, bt, ft): d2=d1+dV/lX/lY, f=..., u=2*dW/(d1+d2)/lY
 					// d2=updated water height, b is the terrain height
 					// dh = b + d1 - bt - d1				
-					dhl = 2.0*Math.random() + b + d1 - this.get(Math.max(xi-1, 0), yi) - this.getd1(Math.max(xi-1, 0), yi); // todo: neighbor averages?
-					dhr = 2.0*Math.random() + b + d1 - this.get(Math.min(xi+1, tmax), yi) - this.getd1(Math.min(xi+1, tmax), yi);
-					dht = 2.0*Math.random() + b + d1 - this.get(xi, Math.min(yi+1, tmax)) - this.getd1(xi, Math.min(yi+1, tmax));
-					dhb = 2.0*Math.random() + b + d1 - this.get(xi, Math.max(yi-1, 0)) - this.getd1(xi, Math.max(yi-1, 0));					
+					dhl = Math.random()*2.0 + b + d1 - this.get(Math.max(xi-1, 0), yi) - this.getd1(Math.max(xi-1, 0), yi); // todo: neighbor averages?
+					dhr = Math.random()*2.0 + b + d1 - this.get(Math.min(xi+1, tmax), yi) - this.getd1(Math.min(xi+1, tmax), yi);
+					dht = Math.random()*2.0 + b + d1 - this.get(xi, Math.min(yi+1, tmax)) - this.getd1(xi, Math.min(yi+1, tmax));
+					dhb = Math.random()*2.0 + b + d1 - this.get(xi, Math.max(yi-1, 0)) - this.getd1(xi, Math.max(yi-1, 0));					
 							
 					//console.log('x ' + xi + ' y ' + yi + ' dhl ' + dhl + ' dht ' + dht);
 					// update outflux in cell xi, yi from t to t+dt
-					this.setfl(xi, yi, this.getfl(xi, yi) + fconst * dhl);
-					this.setfr(xi, yi, this.getfr(xi, yi) + fconst * dhr);
-					this.setft(xi, yi, this.getft(xi, yi) + fconst * dht);
-					this.setfb(xi, yi, this.getfb(xi, yi) + fconst * dhb);
+					this.setflt(xi, yi, this.getfl(xi, yi) + fconst * dhl);
+					this.setfrt(xi, yi, this.getfr(xi, yi) + fconst * dhr);
+					this.setftt(xi, yi, this.getft(xi, yi) + fconst * dht);
+					this.setfbt(xi, yi, this.getfb(xi, yi) + fconst * dhb);
 					
 					// normalize flows
-					K = this.getfl(xi, yi) + this.getfr(xi, yi) + this.getft(xi, yi) + this.getfb(xi, yi);
+					K = this.getflt(xi, yi) + this.getfrt(xi, yi) + this.getftt(xi, yi) + this.getfbt(xi, yi);
 					//console.log('d1 ' + this.getd1(xi, yi) + ' K ' + K);
 					if(K==0.0)
 						K = Math.min(1.0, d1 * lx * ly / Math.max(K, minf) / dt);
 					else
 						K = Math.min(1.0, d1 * lx * ly / K / dt);
 					
-					this.setfl(xi, yi, K * this.getfl(xi, yi));
-					this.setfr(xi, yi, K * this.getfr(xi, yi));
-					this.setft(xi, yi, K * this.getft(xi, yi));
-					this.setfb(xi, yi, K * this.getfb(xi, yi));
-					//console.log('fl ' + this.getfl(xi, yi) + ' ft ' + this.getft(xi, yi));
+					this.setflt(xi, yi, K * this.getflt(xi, yi));
+					this.setfrt(xi, yi, K * this.getfrt(xi, yi));
+					this.setftt(xi, yi, K * this.getftt(xi, yi));
+					this.setfbt(xi, yi, K * this.getfbt(xi, yi));
+					//console.log('fl ' + this.getflt(xi, yi) + ' ft ' + this.getftt(xi, yi));
 					//console.log("1st loop b: " + this.get(xi, yi) + " fl: " + K * this.getfl(xi, yi));
 					//console.log("1st loop d: " + this.getw(xi, yi) + " d1: " + d1);
 				} // yi
 			} // xi
+			
+			// copy back flows from temp storage
+			for (var xi = 0; xi < tmax; xi++) {
+				for (var yi = 0; yi < tmax; yi++) {
+					this.setfl(xi, yi, this.getflt(xi, yi));
+					this.setfr(xi, yi, this.getfrt(xi, yi));
+					this.setft(xi, yi, this.getftt(xi, yi));
+					this.setfb(xi, yi, this.getfbt(xi, yi));
+					//console.log('fl ' + this.getfl(xi, yi) + ' ft ' + this.getft(xi, yi));
+				} // yi
+			} // xi				
 			
 			// based on flows for all cells calculate flows and d2 (updated water height)
 			for (var xi = 0; xi < tmax; xi++) {
@@ -456,9 +505,14 @@
 			for (var xi = 0; xi < tmax; xi++) {
 				for (var yi = 0; yi < tmax; yi++) {	
 					// 4 s t+dt <- SedimentTransport(s1, v t+dt): s at t+dt=s1(x-u dt, y-v dt)
-					sediment = this.gets1(xi - Math.floor(this.getu(xi, yi) * dt), yi - Math.floor(this.getv(xi, yi) * dt));
+					var dx = Math.floor(this.getu(xi, yi) * dt);
+					var dy = Math.floor(this.getv(xi, yi) * dt);
+					dx = Math.sign(dx) * Math.min(Math.abs(dx), maxdxy);
+					dy = Math.sign(dy) * Math.min(Math.abs(dy), maxdxy);
+					// this is key for the sediment travel distance / dt
+					sediment = this.gets1(xi - dx, yi - dy);
 					this.sets(xi, yi, sediment);
-					//console.log("3rd loop s: " + this.gets(xi, yi));
+					//console.log("3rd loop s: " + this.gets(xi, yi).toPrecision(2) + ' u: ' + this.getu(xi, yi).toPrecision(2) + ' dt: ' + dt + ' inc: ' + Math.floor(this.getu(xi, yi) * dt));
 					
 					// 5 d t+dt <- Evaporation(d2): d t+dt=d2*(1-Ke*dt)
 					// limit terrain changes (still to erratic...)
@@ -705,7 +759,7 @@
 	//terrain.generate_test(); // test terrain to adjust erosion parameters
     terrain.generate(1.6);
 	// erode terrain for more realism *************************************
-	terrain.erode(5); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points, 4000 for detail 6) 100 drops work ok
+	terrain.erode(8); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points, 4000 for detail 6) 100 drops work ok
 	
 	// render terrain ******************************************************
     terrain.draw(ctx, width, height);
