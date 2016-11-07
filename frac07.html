@@ -242,11 +242,11 @@
 	Terrain.prototype.erode = function(niter) {
 		var A = 1.0; // cross section of pipe
 		var g = 9.81; // gravitation constant
-		var l = 1.0; // length of virtual pipe
-		var Kc = 10.0; // sediment transport capacity
-		var Ks = 0.09; // dissolving constant
-		var Kd = 0.09; // deposition constant
-		var Ke = 0.01; // evaporation constant
+		var l = 2.0; // length of virtual pipe
+		var Kc = 4.0; // sediment transport capacity
+		var Ks = 0.06; // dissolving constant
+		var Kd = 0.05; // deposition constant
+		var Ke = 0.001; // evaporation constant
 		
 		var K = 1.0; // scaling factor
 		var lx = 1.0; // distance grid points x-direction
@@ -267,9 +267,9 @@
 		var cap = 0.0; // sediment transport capacity
 		var dhx=dhy=0.0; // height difference x, y
 		var sinalpha = 0.0; // sin of local tile tilt angle
-		var dt = 0.0005; // time increment - VERY important!!! (smaller->more cont. trenches)
+		var dt = 0.005; // time increment - VERY important!!! (smaller->more cont. trenches)
 		
-		var Kr = 0.6; // rainfall per cell per dt
+		var Kr = 0.9; // rainfall per cell per dt
 		var minw = 0.01; // minimum water height (to prevent div0)
 		var minf = 0.01; // minimum flow (to prevent div0)
 		var d2 = 0.0; // updated water height
@@ -277,7 +277,7 @@
 		var v = 0.0; // water velocity y
 		
 		var capmax = 30.0; // max soil carry capacity
-		var sinamin = 1.5; // max tilt (absolute)
+		var sinamin = 2.5; // max tilt (absolute)
 		/* Hydraulic Erosion Model (Mei/Decaudin/Hu)
 		b...terrain height
 		d...water height
@@ -332,10 +332,10 @@
 					// 2 d2, f t+dt, v t+dt <- FlowSim(d1, bt, ft): d2=d1+dV/lX/lY, f=..., u=2*dW/(d1+d2)/lY
 					// d2=updated water height, b is the terrain height
 					// dh = b + d1 - bt - d1				
-					dhl = 2.0*Math.random() + b + d1 - this.get(Math.max(xi-1, 0), yi) - this.getd1(Math.max(xi-1, 0), yi); // todo: neighbor averages?
-					dhr = 2.0*Math.random() + b + d1 - this.get(Math.min(xi+1, tmax), yi) - this.getd1(Math.min(xi+1, tmax), yi);
-					dht = 2.0*Math.random() + b + d1 - this.get(xi, Math.min(yi+1, tmax)) - this.getd1(xi, Math.min(yi+1, tmax));
-					dhb = 2.0*Math.random() + b + d1 - this.get(xi, Math.max(yi-1, 0)) - this.getd1(xi, Math.max(yi-1, 0));					
+					dhl = b + d1 - this.get(Math.max(xi-1, 0), yi) - this.getd1(Math.max(xi-1, 0), yi); // todo: neighbor averages?
+					dhr = b + d1 - this.get(Math.min(xi+1, tmax), yi) - this.getd1(Math.min(xi+1, tmax), yi);
+					dht = b + d1 - this.get(xi, Math.min(yi+1, tmax)) - this.getd1(xi, Math.min(yi+1, tmax));
+					dhb = b + d1 - this.get(xi, Math.max(yi-1, 0)) - this.getd1(xi, Math.max(yi-1, 0));					
 							
 					//console.log('x ' + xi + ' y ' + yi + ' dhl ' + dhl + ' dht ' + dht);
 					// update outflux in cell xi, yi from t to t+dt
@@ -346,9 +346,9 @@
 					
 					// normalize flows
 					K = this.getfl(xi, yi) + this.getfr(xi, yi) + this.getft(xi, yi) + this.getfb(xi, yi);
-					//console.log('d1 ' + this.getd1(xi, yi) + ' K ' + K);
+					//console.log('d1 ' + this.getd1(xi, yi).toPrecision(2) + ' K ' + K.toPrecision(2));
 					if(K==0.0)
-						K = Math.min(1.0, d1 * lx * ly / Math.max(K, minf) / dt);
+						K = Math.min(1.0, d1 * lx * ly / minf / dt);
 					else
 						K = Math.min(1.0, d1 * lx * ly / K / dt);
 					
@@ -356,9 +356,9 @@
 					this.setfr(xi, yi, K * this.getfr(xi, yi));
 					this.setft(xi, yi, K * this.getft(xi, yi));
 					this.setfb(xi, yi, K * this.getfb(xi, yi));
-					//console.log('fl ' + this.getfl(xi, yi) + ' ft ' + this.getft(xi, yi));
-					//console.log("1st loop b: " + this.get(xi, yi) + " fl: " + K * this.getfl(xi, yi));
-					//console.log("1st loop d: " + this.getw(xi, yi) + " d1: " + d1);
+					//console.log('fl ' + this.getfl(xi, yi).toPrecision(2) + ' ft ' + this.getft(xi, yi).toPrecision(2));
+					//console.log("1st loop b: " + this.get(xi, yi).toPrecision(2) + " fl: " + this.getfl(xi, yi).toPrecision(2));
+					//console.log("1st loop d: " + this.getw(xi, yi).toPrecision(2) + " d1: " + d1.toPrecision(2));
 				} // yi
 			} // xi
 			
@@ -375,7 +375,7 @@
 					dVol *= dt;
 					
 					// update water height (d1 = this.getw(xi, yi))
-					d2 = Math.max(0.0, this.getw(xi, yi) + dVol / lx / ly);
+					d2 = this.getw(xi, yi) + dVol / lx / ly;
 					this.setd2(xi, yi, d2);
 					//console.log("2nd loop dVol: " + dVol.toPrecision(2) + " d2: " + d2.toPrecision(2));
 				} // yi
@@ -692,7 +692,7 @@
 	  
 	// putting it all together
 	// create fractal terrain as base *************************************
-    var terrain = new Terrain(6); // details in powers of 2
+    var terrain = new Terrain(7); // details in powers of 2
 	//terrain.generate_test(); // test terrain to adjust erosion parameters
     terrain.generate(1.6);
 	// erode terrain for more realism *************************************
