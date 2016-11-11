@@ -1,0 +1,336 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Terrain Demo</title>
+  </head>
+  <body style='background: #000'>
+    <canvas id='display' width='1' height='1' />
+
+    <script>
+		
+		// http://www.playfuljs.com/realistic-terrain-in-130-lines/
+		
+      function Terrain(detail) {
+        this.size = Math.pow(2, detail) + 1;
+        this.max = this.size - 1;
+        this.map = new Float32Array(this.size * this.size);
+      }
+
+	  // get terrain height at x, y
+      Terrain.prototype.get = function(x, y) {
+        //if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+		if(x<0) x=0;
+		if(y<0) y=0;
+		if(x>this.max) x=this.max;
+		if(y>this.max) y=this.max;
+        return this.map[x + this.size * y];
+      };
+
+	  // set terrain height at x, y
+      Terrain.prototype.set = function(x, y, val) {
+        this.map[x + this.size * y] = val; // only 1-dim arrays in js
+      };
+
+	  // object initialization
+      Terrain.prototype.generate = function(roughness) {
+        var self = this;
+		
+		// set the corners to a 'seed' value which will influence the rest of the rendering.
+		// This would start all the corners halfway up the cube
+		for (x = 0; x < self.max; x += 1) {
+              this.set(x, 0, self.max / 2);
+        }
+		// leave the other side of the cube as it was
+        this.set(this.max, this.max, 0);
+        this.set(0, this.max, self.max / 2);
+
+		// subdivision calls
+        divide(this.max);
+		
+		// recursively look at smaller and smaller divisions of the height map
+		// At each division, we'll split the map into squares and update their 
+		// center points during the square phase. Then, we'll split the map into 
+		// diamonds and update their center points during the diamond phase
+        function divide(size) {
+          var x, y, half = size / 2;
+          var scale = roughness * size; // size of offsets decreases with divisions
+		  
+          if (half < 1) return;
+		  
+		  // TODO: speed this up
+          for (y = half; y < self.max; y += size) {
+            for (x = half; x < self.max; x += size) {
+              square(x, y, half, Math.random() * scale * 2 - scale);
+            }
+          }
+		  
+          for (y = 0; y <= self.max; y += half) {
+            for (x = (y + half) % size; x <= self.max; x += size) {
+				diamond(x, y, half, Math.random() * scale * 2 - scale);
+            }
+          }
+          divide(size / 2); // recursive call
+        }
+
+        function average(values) {
+          var valid = values.filter(function(val) { return val !== -1; });
+          var total = valid.reduce(function(sum, val) { return sum + val; }, 0);
+          return total / valid.length;
+        }
+		
+		// square phase averages four corner points before applying a random offset
+        function square(x, y, size, offset) {
+          var ave = average([
+            self.get(x - size, y - size),   // upper left
+            self.get(x + size, y - size),   // upper right
+            self.get(x + size, y + size),   // lower right
+            self.get(x - size, y + size)    // lower left
+          ]);
+          self.set(x, y, ave + offset);
+        }
+		
+		// diamond phase averages four edge points before applying a random offset
+        function diamond(x, y, size, offset) {
+          var ave = average([
+            self.get(x, y - size),      // top
+            self.get(x + size, y),      // right
+            self.get(x, y + size),      // bottom
+            self.get(x - size, y)       // left
+          ]);
+          self.set(x, y, ave + offset);
+        }
+      };
+	  
+		// testterrain for erosion to adjust parameters
+		Terrain.prototype.generate_test = function() {
+			var self = this;
+			var smax = self.max;
+			var smax3 = Math.floor(smax/3);
+			var smax23 = 2*smax3;
+			var x, y, h = 0;
+			
+			for (y = 0; y <= smax; y += 1) {
+				for (x = 0; x <= smax; x += 1) {
+					h=0;			
+					if((x>smax/3) && (x<2*smax/3)) {
+						if((y>smax/3) && (y<2*smax/3)) h=100
+						else h=0;
+					}
+					self.set(x, y, h);
+				}
+			}
+		};
+		
+	// *************** Erosion ***************************************
+	Terrain.prototype.erode = function(ndrops) {
+		// http://ranmantaru.com/blog/2011/10/08/water-erosion-on-heightmap-terrain/
+		// number of drops falling and eroding along gradient path
+		
+		var Kg = 2 * 9.81; // 2*g
+		var Kevap = 0.001; // water evaporation per cycle step 0.001
+		var Kr = 0.9; // erosion speed 0.9
+		var Kq = 10; // soil carry capacity 10
+		var Kd = 0.02; // deposit speed 0.02
+		var Ki = 1.5; // direction inertia 0.1
+		// Kq=10; Kw=0.001f; Kr=0.9f; Kd=0.02f; Ki=0.1f; minSlope=0.05f; g=20;
+		var steplim = 10; // test !!!
+		
+		for (var i = 0; i < ndrops; i++) {
+			var xp, yp;
+			//var dgrid = Math.floor(this.size / 8);
+			var dgrid = 2;
+			var steps = 0;
+			
+			// starting point of erosion - random drop
+			var xi=Math.floor((Math.random() * (this.size-dgrid-2)) + 2);
+			var yi=Math.floor((Math.random() * (this.size-dgrid-2)) + 2);
+			xp=xi;
+			yp=yi;
+			
+			var dx=0;
+			var dy=0;	
+			var v=0, evap=0;
+			var slipm=0; // mass slipping with drop
+			var h = 0; // current height
+			var hpatch = [0,0,0,0];
+			var sgndx = [-1,1,1,-1];
+			var sgndy = [-1,-1,1,1];
+			
+			// main erosion loop for one path		
+			do {
+				h = this.get(xi, yi);
+				// calculate gradient
+				hpatch[0]=this.get(xi-1, yi-1);
+				hpatch[1]=this.get(xi+1, yi-1);
+				hpatch[2]=this.get(xi+1, yi+1);
+				hpatch[3]=this.get(xi-1, yi+1);
+				var kmin=-1;
+				var hmin=h;
+				for(var k=0; k<4; k++) {
+					if(hpatch[k]<hmin) {
+						kmin=k;
+						hmin=hpatch[k];
+					}
+				}
+				var gradx=0;
+				var grady=0;
+				if(kmin>0) {
+					gradx = sgndx[kmin];
+					grady = sgndy[kmin];
+				} else {
+					// local minimum - deposit all
+					this.set(xi, yi, Math.min(h + slipm, h*1.1));
+					break;
+				}
+				dx = (dx - gradx) * Ki * Math.random() + gradx;
+				dy = (dy - grady) * Ki * Math.random() + grady;				
+				
+				// next point = current point + gradient
+				var nxp = xp + dx;
+				var nyp = yp + dy;
+
+				// sample next height
+				var nxi = ~~(nxp); // faster substitute for Math.floor()
+				var nyi = ~~(nyp);
+				var nh=hmin; // next height is the height at the next gradient step
+				
+				// compute transport capacity
+				var dh = h - nh;
+				var slope = dh;
+
+				// compute the transportable quantity
+				var q = slope*v*evap*Kq;
+
+				// deposit/erode (don't erode more than dh)
+				// deposit total eroded mass slipm - transported quantity q
+				var ds = slipm - q;
+				//console.log('ds ' + ds.toPrecision(2) + ' slipm ' + slipm.toPrecision(2) + ' q ' + q.toPrecision(2));
+				
+				if(ds>0) { // deposit
+					ds *= Kd;
+				} else { // erode
+					ds *= Kr;
+				}
+				this.set(xi, yi, nh + ds/3);
+				this.set(xi-1, yi, this.get(xi-1, yi) + ds/12);
+				this.set(xi+1, yi, this.get(xi+1, yi) + ds/12);
+				this.set(xi, yi-1, this.get(xi, yi-1) + ds/12);
+				this.set(xi, yi+1, this.get(xi, yi+1) + ds/12);
+				this.set(xi-1, yi-1, this.get(xi-1, yi-1) + ds/12);
+				this.set(xi+1, yi+1, this.get(xi+1, yi+1) + ds/12);
+				this.set(xi+1, yi-1, this.get(xi+1, yi-1) + ds/12);
+				this.set(xi-1, yi+1, this.get(xi-1, yi+1) + ds/12);
+				slipm -= ds;
+				
+				// move to the neighbour
+				v=Math.min(2.0, Math.sqrt(Math.abs(v*v + Kg*dh))); // high speeds v seem to be a problem...
+				evap *= (1 - Kevap);
+				
+				xp=nxp; yp=nyp;
+				xi=nxi; yi=nyi;
+
+				h=nh;	  
+				steps++;
+
+			} while (steps<steplim);
+		}
+	};
+	
+	// render ******************************************************
+      Terrain.prototype.draw = function(ctx, width, height) {
+        var self = this;
+		var tsize = this.size;
+        //var waterVal = this.size * 0.3;
+		
+		// nested loops that drew rectangles from the 'back' (y = 0) to the 'front' (y = this.size) of our map
+        for (var y = 0; y < tsize; y++) {
+          for (var x = 0; x < tsize; x++) {
+            var val = this.get(x, y);
+            var top = project(x, y, val);
+            //var bottom = project(x + 1, y, 0);
+            //var style = brightness(x, y, this.get(x + 1, y) - val);
+			
+			if (x == 0 && y == 0) {
+				ctx.beginPath();
+				ctx.strokeStyle="green";
+			}
+			
+		    if (x == 0) {
+				ctx.stroke();
+				ctx.beginPath();
+				ctx.strokeStyle="green";
+				ctx.moveTo(top.x, top.y);
+				//console.log("y==0 " + top.x + " " + top.y);
+			} else {
+				ctx.lineTo(top.x, top.y);
+				//rect(top, bottom, style);
+			}
+          }
+        }
+
+        function rect(a, b, style) {
+          if (b.y < a.y) return;
+		  // this draws the rectangle to the screen
+          ctx.fillStyle = style;
+		  // x upper left, y upper left, width, height
+          //ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+		  ctx.strokeStyle="green";
+		  //ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+		  //ctx.beginPath();
+		  //ctx.moveTo(a.x, a.y);
+		  //ctx.lineTo(b.x, b.y);
+		  //ctx.stroke();
+		  ctx.strokeRect(a.x-1, a.y-1, 1, 1);
+        }
+		
+		// set point brightness
+        function brightness(x, y, slope) {
+          if (y === self.max || x === self.max) return '#000';
+		  // compare our current height value against the next point's height value to find a slope
+		  // draw brighter rectangles for higher slopes to fill one side with light and the other with shadow
+		  // ~~ is double NOT bitwise operator, faster for Math.floor()
+          var b = ~~(slope * 60) + 128;
+          return ['rgba(', b, ',', b, ',', b, ',1)'].join('');
+        }
+		
+		// rotate view to diamond
+        function iso(x, y) {
+          return {
+            x: 0.5 * (self.size + x - y),
+            y: 0.5 * (x + y)
+          };
+        }
+		
+		// perspective: divide horizonal and vertical position by depth so that higher depths 
+		// render closer to the origin (ie, further away objects appear smaller)
+        function project(flatX, flatY, flatZ) {
+          var point = iso(flatX, flatY);
+          var x0 = width * 0.5;
+          var y0 = height * 0.2;
+          var z = self.size * 3 - flatZ + point.y * 1.75;
+          var x = (point.x - self.size * 0.5) * 12;
+          var y = (self.size - point.y) * 0.01 + 1;
+
+          return {
+            x: x0 + x / y,
+            y: y0 + z / y
+          };
+        }
+      };
+
+      var display = document.getElementById('display');
+	  // getContext() method returns an object that provides methods and properties for drawing on the canvas
+      var ctx = display.getContext('2d');
+      var width = display.width = window.innerWidth;
+      var height = display.height = window.innerHeight;
+	  
+	// putting it all together
+      var terrain = new Terrain(7); // details in powers of 2
+	  //terrain.generate_test(); // test terrain to adjust erosion parameters
+      terrain.generate(1.8);
+	  terrain.erode(1000); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
+      terrain.draw(ctx, width, height);
+
+    </script>
+  </body>
+</html>
