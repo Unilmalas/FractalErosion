@@ -14,6 +14,7 @@
         this.size = Math.pow(2, detail) + 1;
         this.max = this.size - 1;
         this.map = new Float32Array(this.size * this.size);
+		this.mapcp = new Float32Array(this.size * this.size); // ping-pong storage
       }
 
 	  // get terrain height at x, y
@@ -29,7 +30,7 @@
 	  // set terrain height at x, y
       Terrain.prototype.set = function(x, y, val) {
         this.map[x + this.size * y] = val; // only 1-dim arrays in js
-      };
+      };	  
 
 	  // object initialization
       Terrain.prototype.generate = function(roughness) {
@@ -112,8 +113,8 @@
 			for (y = 0; y <= smax; y += 1) {
 				for (x = 0; x <= smax; x += 1) {
 					h=0;			
-					if((x>smax/3) && (x<2*smax/3)) {
-						if((y>smax/3) && (y<2*smax/3)) h=100
+					if((x>smax3) && (x<2*smax3)) {
+						if((y>smax3) && (y<2*smax3)) h=((x-y) + smax3)
 						else h=0;
 					}
 					self.set(x, y, h);
@@ -128,14 +129,13 @@
 		
 		var Kg = 2 * 9.81; // 2*g
 		var Kevap = 0.001; // water evaporation per cycle step 0.001
-		var Kr = 0.5; // erosion speed 0.9
-		var Kq = 12; // soil carry capacity 10
-		var Kd = 0.03; // deposit speed 0.02
-		var Ki = 1.5; // direction inertia 0.1
+		var Kr = 1.0; // erosion speed 0.9
+		var Kq = 20; // soil carry capacity 10
+		var Kd = 0.2; // deposit speed 0.02
+		var Ki = 1.2; // direction inertia 0.1
 		// Kq=10; Kw=0.001f; Kr=0.9f; Kd=0.02f; Ki=0.1f; minSlope=0.05f; g=20;
-		var steplim = 12; // test !!!
+		var steplim = 30; // test !!!
 		
-		// todo: add flip-flop storage for terrain, currently it still self-affects
 		for (var i = 0; i < ndrops; i++) {
 			var xp, yp;
 			//var dgrid = Math.floor(this.size / 8);
@@ -150,7 +150,7 @@
 			
 			var dx=0;
 			var dy=0;	
-			var v=0, evap=0;
+			var v=0, evap=1;
 			var slipm=0; // mass slipping with drop
 			var h = 0; // current height
 			var hpatch = [0,0,0,0];
@@ -165,12 +165,12 @@
 				hpatch[1]=(this.get(xi+1, yi-1) + (this.get(xi, yi-1) + this.get(xi+1, yi))/2)/2;
 				hpatch[2]=(this.get(xi+1, yi+1) + (this.get(xi+1, yi) + this.get(xi, yi+1))/2)/2;
 				hpatch[3]=(this.get(xi-1, yi+1) + (this.get(xi-1, yi) + this.get(xi, yi+1))/2)/2;
-				var kmin=-1;
-				var hmin=h;
+				var kmin = -1;
+				var hmin = h;
 				for(var k=0; k<4; k++) {
-					if(hpatch[k]<hmin) {
-						kmin=k;
-						hmin=hpatch[k];
+					if(hpatch[k]<=hmin) {
+						kmin = k;
+						hmin = hpatch[k];
 					}
 				}
 				var gradx=0;
@@ -183,7 +183,7 @@
 					this.set(xi, yi, Math.min(h + slipm, h*1.04));
 					break;
 				}
-				dx = (dx - gradx) * Ki * Math.random() + gradx;
+				dx = (dx - gradx) * Ki * Math.random() + gradx; // add a random element to preventing bouncing back and forth
 				dy = (dy - grady) * Ki * Math.random() + grady;				
 				
 				// next point = current point + gradient
@@ -224,16 +224,16 @@
 				slipm -= ds;
 				
 				// move to the neighbour
-				v=Math.min(2.0, Math.sqrt(Math.abs(v*v + Kg*dh))); // high speeds v seem to be a problem...
+				v = Math.min(v * Ki * Math.random(), Math.sqrt(Math.abs(v * v + Kg * dh))); // high speeds v seem to be a problem...
 				evap *= (1 - Kevap);
 				
-				xp=nxp; yp=nyp;
-				xi=nxi; yi=nyi;
+				xp = nxp; yp = nyp;
+				xi = nxi; yi = nyi;
 
 				h=nh;	  
 				steps++;
 
-			} while (steps<steplim);
+			} while (steps < steplim);
 		}
 	};
 	
@@ -328,8 +328,8 @@
 	// putting it all together
       var terrain = new Terrain(7); // details in powers of 2
 	  //terrain.generate_test(); // test terrain to adjust erosion parameters
-      terrain.generate(1.8);
-	  terrain.erode(2000); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
+      terrain.generate(1.4);
+	  terrain.erode(1000); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
       terrain.draw(ctx, width, height);
 
     </script>
