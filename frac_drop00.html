@@ -128,13 +128,14 @@
 		
 		var Kg = 2 * 9.81; // 2*g
 		var Kevap = 0.001; // water evaporation per cycle step 0.001
-		var Kr = 0.9; // erosion speed 0.9
-		var Kq = 10; // soil carry capacity 10
-		var Kd = 0.02; // deposit speed 0.02
+		var Kr = 0.5; // erosion speed 0.9
+		var Kq = 12; // soil carry capacity 10
+		var Kd = 0.03; // deposit speed 0.02
 		var Ki = 1.5; // direction inertia 0.1
 		// Kq=10; Kw=0.001f; Kr=0.9f; Kd=0.02f; Ki=0.1f; minSlope=0.05f; g=20;
-		var steplim = 10; // test !!!
+		var steplim = 12; // test !!!
 		
+		// todo: add flip-flop storage for terrain, currently it still self-affects
 		for (var i = 0; i < ndrops; i++) {
 			var xp, yp;
 			//var dgrid = Math.floor(this.size / 8);
@@ -160,10 +161,10 @@
 			do {
 				h = this.get(xi, yi);
 				// calculate gradient
-				hpatch[0]=this.get(xi-1, yi-1);
-				hpatch[1]=this.get(xi+1, yi-1);
-				hpatch[2]=this.get(xi+1, yi+1);
-				hpatch[3]=this.get(xi-1, yi+1);
+				hpatch[0]=(this.get(xi-1, yi-1) + (this.get(xi-1, yi) + this.get(xi, yi-1))/2)/2;
+				hpatch[1]=(this.get(xi+1, yi-1) + (this.get(xi, yi-1) + this.get(xi+1, yi))/2)/2;
+				hpatch[2]=(this.get(xi+1, yi+1) + (this.get(xi+1, yi) + this.get(xi, yi+1))/2)/2;
+				hpatch[3]=(this.get(xi-1, yi+1) + (this.get(xi-1, yi) + this.get(xi, yi+1))/2)/2;
 				var kmin=-1;
 				var hmin=h;
 				for(var k=0; k<4; k++) {
@@ -179,7 +180,7 @@
 					grady = sgndy[kmin];
 				} else {
 					// local minimum - deposit all
-					this.set(xi, yi, Math.min(h + slipm, h*1.1));
+					this.set(xi, yi, Math.min(h + slipm, h*1.04));
 					break;
 				}
 				dx = (dx - gradx) * Ki * Math.random() + gradx;
@@ -196,10 +197,10 @@
 				
 				// compute transport capacity
 				var dh = h - nh;
-				var slope = dh;
+				var slope = dh / Math.sqrt(1 + dh * dh);
 
 				// compute the transportable quantity
-				var q = slope*v*evap*Kq;
+				var q = slope * v * evap * Kq;
 
 				// deposit/erode (don't erode more than dh)
 				// deposit total eroded mass slipm - transported quantity q
@@ -328,7 +329,7 @@
       var terrain = new Terrain(7); // details in powers of 2
 	  //terrain.generate_test(); // test terrain to adjust erosion parameters
       terrain.generate(1.8);
-	  terrain.erode(1000); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
+	  terrain.erode(2000); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
       terrain.draw(ctx, width, height);
 
     </script>
