@@ -1,0 +1,58 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Terrain Stroke Test</title>
+  </head>
+  <body style='background: #000'>
+    <canvas id='display' width='1' height='1' />
+
+    <script>
+
+	// a, b are objects: var point = {x: 0, y: 0};
+	function rect(a, b, style) {
+	  if (b.y < a.y) return;
+	  // this draws the rectangle to the screen
+	  ctx.fillStyle = style;
+	  // x upper left, y upper left, width, height
+	  //ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+	  ctx.strokeStyle="green";
+	  //ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+	  //ctx.beginPath();
+	  //ctx.moveTo(a.x, a.y);
+	  //ctx.lineTo(b.x, b.y);
+	  //ctx.stroke();
+	  ctx.strokeRect(a.x-3, a.y-3, 1, 1);
+	}
+
+      var display = document.getElementById('display');
+	// getContext() method returns an object that provides methods and properties for drawing on the canvas
+      var ctx = display.getContext('2d');
+      var width = display.width = window.innerWidth;
+      var height = display.height = window.innerHeight;
+	
+	// corner points
+	var p0 = {x: 100, y: 100};
+	var p1 = {x: 150, y: 200};
+	var p2 = {x: 200, y: 200};
+	var p3 = {x: 300, y: 100};
+	var cpoint = {x: 0, y: 0};
+	// tangents at p0, p3: automatically defined by vectors from p0 to p1 and p3 to p2
+	// create directions strokes from p0 to p3: let t vary from 0 to 1 in 100 increments
+	// B(t) = (1-t)**3 p0 + 3(1 - t)**2 t P1 + 3(1-t)t**2 P2 + t**3 P3
+	// x = (1-t)*(1-t)*(1-t)*p0x + 3*(1-t)*(1-t)*t*p1x + 3*(1-t)*t*t*p2x + t*t*t*p3x;
+	// y = (1-t)*(1-t)*(1-t)*p0y + 3*(1-t)*(1-t)*t*p1y + 3*(1-t)*t*t*p2y + t*t*t*p3y;
+	
+	ctx.beginPath();
+	ctx.moveTo(p0.x,p0.y);
+	ctx.strokeStyle="green";
+	for(var t=0; t<=1;t+=0.1) {
+		cpoint.x = (1-t)*(1-t)*(1-t)*p0.x + 3*(1-t)*(1-t)*t*p1.x + 3*(1-t)*t*t*p2.x + t*t*t*p3.x;
+		cpoint.y = (1-t)*(1-t)*(1-t)*p0.y + 3*(1-t)*(1-t)*t*p1.y + 3*(1-t)*t*t*p2.y + t*t*t*p3.y;
+		//ctx.moveTo(top.x, top.y);
+		ctx.lineTo(cpoint.x, cpoint.y);
+	}
+	ctx.stroke();
+	 
+    </script>
+  </body>
+</html>
