@@ -14,7 +14,6 @@
         this.size = Math.pow(2, detail) + 1;
         this.max = this.size - 1;
         this.map = new Float32Array(this.size * this.size);
-		this.mapcp = new Float32Array(this.size * this.size); // ping-pong storage
       }
 	  
 	  // get terrain height at x, y
@@ -313,24 +312,24 @@
       };
 	  
 	  // create directions strokes ******************************************
-      Terrain.prototype.genstrokes = function(ctx, width, height) {
+      Terrain.prototype.genstrokes = function() {
 		// set division hierarchy
 		var divh = 0;
-		var maxhie = 4; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
+		var maxhie = 3; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
 		// note: therefore h = (ln(screen_size) - ln(interval lgth)) / ln2
 		
 		// stroke storage: 1-dim arrays, data set by hierarchy, i.e. [-data h=0- --data h=1-- ---...]
 		var ntrokesperh = 8; // so many strokes per hierarchy (4 in each direction)
-		var strkstrindex = [0, 1, 2, 3, 4]; // hierarchy levels for strokes (hard coded, maxhie = 4)
+		var strkstrindex = [0, 1, 2, 3]; // hierarchy levels for strokes (hard coded, maxhie = 4)
 		
 		var strkstrlen = strkstrindex.map(function(h) { // returns numbers of squares times strokes per square
-			return (ntrokesperh * Math.pow(4, h+1));
+			return (ntrokesperh * Math.pow(4, h));
 		});
 		var strkseedstrlenXY = strkstrindex.map(function(h) { // returns numbers of subdivisions in one dimension (for seed points)
-			return Math.pow(2, h+1);
+			return Math.pow(2, h);
 		});
 		var strkseedstrlen = strkstrindex.map(function(h) { // returns numbers of squares (for seed points)
-			return Math.pow(4, h+1);
+			return Math.pow(4, h);
 		});
 		var strkstrlenc = strkstrindex.map(function(h) { // returns cumulative lengths for strokes: access array at current hierarchy
 			return (h==0) ? (strkstrlen[h]) : (strkstrlen[h-1] + strkstrlen[h]);
@@ -343,10 +342,10 @@
 		});
 		
 		// init data fields: 1-dim arrays, hierarchy 0, then 1 etc., lengths increase due to subdivisions
-		this.x = new Int16Array(strkstrlenc[maxhie]); // stroke points
-		this.y = new Int16Array(strkstrlenc[maxhie]);
-		this.xs = new Int16Array(strkseedstrlenc[maxhie]); // seed points
-		this.ys = new Int16Array(strkseedstrlenc[maxhie]);
+		var x = []; // stroke points
+		var y = [];
+		var xs = []; // seed points
+		var ys = [];
 		
 		// create an access function that fetches all values for a given hierarchy
 		function gethierdata(myh) {
@@ -366,14 +365,15 @@
 		var xn1 = 0, yn1 = 0;
 		var xl0 = 0, yl0 = 0;
 		var xl1 = 0, yl1 = 0;
+		var size = this.size;
+		var half = size;
+		var xswork = 0, yswork = 0;
 		
 		// main hierarchy loop
 		for (h=0; h<maxhie; h++) {
 			// starting at h=0 determine seed points, calculate strokes
 			var dh = [0.0, 0.0, 0.0, 0.0]; // height difference in 4 directions
 			// x = half -> size + half: next subdivision
-			var size = this.size / 2;
-			var half = size / 2;
 			
 			// set all seed points for current hierarchy
 			var seedIndex = 0;
@@ -381,19 +381,25 @@
 			// loop over x-seedpoints: 2^(h+1) per hierarchy
 			for (var k=0; k<strkseedstrlenXY[h]; k++) {
 				
-				// todo: seedindex?
-				xs[strkseedstrlenXYc[h-1] + k] = half * k;
-				
+				if (h==0) seedIndex = 0
+				else seedIndex = strkseedstrlenXYc[h-1];
+				xs[seedIndex + k] = half * k + half / 2;
+				xswork = xs[seedIndex + k];
+
 				// loop over y-seedpoints: 2^(h+1) per hierarchy
-				for (var l=0; k<strkseedstrlenXY[h]; l++) {
-					// todo: seedindex?
-					ys[strkseedstrlenXYc[h-1] + k * strkseedstrlenXY[h] + l] = half * l;
+				for (var l=0; l<strkseedstrlenXY[h]; l++) {
+
+					ys[seedIndex + k * strkseedstrlenXY[h] + l] = half * l + half / 2;
+					yswork = ys[seedIndex + k * strkseedstrlenXY[h] + l];
+					//console.log('xs ' + xs[seedIndex + k].toPrecision(2));
+					//console.log('ys ' + ys[seedIndex + k * strkseedstrlenXY[h] + l].toPrecision(2));
+					//console.log('size ' + size + ' upper index ' + strkseedstrlenXY[h] + ' h ' + h);
 					
 					// next stroke points directions 0 and 1, both starting at current seed point xs, ys
-					xn0 = xs[k];
-					yn0 = ys[l];
-					xn1 = xs[k];
-					yn1 = ys[l];
+					xn0 = xswork;
+					yn0 = yswork;
+					xn1 = xswork;
+					yn1 = yswork;
 					xl0 = xn0; // save previous-but-one points for stroke reversal check
 					yl0 = yn0;
 					xl1 = xn1;
@@ -416,15 +422,16 @@
 						//  0
 						// 3 1
 						//  2
-						currheight = this.get(xs[strkseedstrlenc[h]],ys[strkseedstrlenc[h]]);
+						currheight = this.get(xswork, yswork);
 						lastmax = 0.0; // max height difference
 						lastmin = 0.0; // min height difference
 						lastmaxi = 0;
 						lastmini = 0;
-						dh[3] = this.get(xs - half / 2, ys) - currheight;
-						dh[1] = this.get(xs + half / 2, ys) - currheight;
-						dh[0] = this.get(xs, ys + half / 2) - currheight;
-						dh[2] = this.get(xs, ys - half / 2) - currheight;
+						// need to check here: for higher hierarchies, do we need to take an average of larger areas instead of just points?
+						dh[3] = this.get(xswork - half / 2, yswork) - currheight;
+						dh[1] = this.get(xswork + half / 2, yswork) - currheight;
+						dh[0] = this.get(xswork, yswork + half / 2) - currheight;
+						dh[2] = this.get(xswork, yswork - half / 2) - currheight;
 						for (var i=0; i<4; i++) {
 							if (dh[i] > lastmax) {
 								lastmax = dh[i];
@@ -491,11 +498,11 @@
 						}			
 						
 						// C drawing limits (borders)
-						if ((Math.abs(xn0 - xs[seedIndex]) > half) || (Math.abs(yn0 - ys[seedIndex]) > half)) {
+						if ((Math.abs(xn0 - xswork) > half) || (Math.abs(yn0 - yswork) > half)) {
 							strokeend = true;
 							break;
 						}
-						if ((Math.abs(xn1 - xs[seedIndex]) > half) || (Math.abs(yn1 - ys[seedIndex]) > half)) {
+						if ((Math.abs(xn1 - xswork) > half) || (Math.abs(yn1 - yswork) > half)) {
 							strokeend = true;
 							break;
 						}
@@ -505,16 +512,19 @@
 						// either check parent-squares (cumbersome) or just a stroke image file (buth then we need to render as we go...)
 						
 						// add next stroke points xn0, yn0 to storage
+						//console.log(strkstrlenc[0]);
 						if (h==0) {
 							x[strkstrlenc[0] - ntrokesperh / 2 + nstrokes] = xn0;
 							y[strkstrlenc[0] - ntrokesperh / 2 + nstrokes] = yn0;
 							x[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = xn1;
 							y[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = yn1;
+							console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);
 						} else {
 							x[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = xn0;
 							y[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = yn0;
 							x[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = xn1;
-							y[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = yn1;							
+							y[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = yn1;	
+							console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);							
 						}
 						
 						nstrokes++;
@@ -522,8 +532,17 @@
 					} // stroke loop
 				} // seed point loop y
 			} // seed point loop x
+			
+			half /= 2;
+			
 		} // mainh hierarchy loop
 		// adjust for lighting by running through stroke hierarchy images
+		
+		/*for (k=0; k<strkstrlenc[2]; k++)
+			for (l=0; l<strkstrlenc[2]; l++) {
+				console.log('x ' + x[k] + 'y ' + y[l]);
+			}*/
+		
 	  }; 
 	  
       var display = document.getElementById('display');
@@ -533,11 +552,12 @@
       var height = display.height = window.innerHeight;
 	  
 	// putting it all together
-      var terrain = new Terrain(7); // details in powers of 2
+      var terrain = new Terrain(5); // details in powers of 2
 	  //terrain.generate_test(); // test terrain to adjust erosion parameters
       terrain.generate(1.5);
-	  terrain.erode(2000); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
+	  terrain.erode(100); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
       terrain.draw(ctx, width, height);
+	  terrain.genstrokes();
     </script>
   </body>
 </html>
