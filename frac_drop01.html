@@ -239,19 +239,19 @@
         //var waterVal = this.size * 0.3;
 		
 		// nested loops that drew rectangles from the 'back' (y = 0) to the 'front' (y = this.size) of our map
-        for (var y = 0; y < tsize; y++) {
-          for (var x = 0; x < tsize; x++) {
+        for (var y = 1; y < tsize-1; y++) { // starting at 1 and going till size-1 due to boundary condition issues
+          for (var x = 1; x < tsize-1; x++) {
             var val = this.get(x, y);
             var top = project(x, y, val);
             //var bottom = project(x + 1, y, 0);
             //var style = brightness(x, y, this.get(x + 1, y) - val);
 			
-			if (x == 0 && y == 0) {
+			if (x == 1 && y == 1) {
 				ctx.beginPath();
 				ctx.strokeStyle="green";
 			}
 			
-		    if (x == 0) {
+		    if (x == 1) {
 				ctx.stroke();
 				ctx.beginPath();
 				ctx.strokeStyle="green";
@@ -326,11 +326,17 @@
 		var strkstrlen = strkstrindex.map(function(h) { // returns numbers of squares times strokes per square
 			return (ntrokesperh * Math.pow(4, h+1));
 		});
+		var strkseedstrlenXY = strkstrindex.map(function(h) { // returns numbers of subdivisions in one dimension (for seed points)
+			return Math.pow(2, h+1);
+		});
 		var strkseedstrlen = strkstrindex.map(function(h) { // returns numbers of squares (for seed points)
 			return Math.pow(4, h+1);
 		});
 		var strkstrlenc = strkstrindex.map(function(h) { // returns cumulative lengths for strokes: access array at current hierarchy
 			return (h==0) ? (strkstrlen[h]) : (strkstrlen[h-1] + strkstrlen[h]);
+		});
+		var strkseedstrlenXYc = strkstrindex.map(function(h) { // returns numbers of subdivisions in one dimension cumulative (for seed points)
+			return (h==0) ? (strkseedstrlenXY[h]) : (strkseedstrlenXY[h-1] + strkseedstrlenXY[h]);
 		});
 		var strkseedstrlenc = strkstrindex.map(function(h) { // returns cumulative lengths for seed points
 			return (h==0) ? (strkseedstrlen[h]) : (strkseedstrlen[h-1] + strkseedstrlen[h]);
@@ -372,141 +378,150 @@
 			// set all seed points for current hierarchy
 			var seedIndex = 0;
 			
-			for (var k=0; k<strkseedstrlenc[h]; k++) {
-			
-				if (h==0) seedIndex = k;
-				else seedIndex = strkseedstrlenc[h-1]+k;	
-				xs[seedIndex] = half * k;
-				ys[seedIndex] = half * k;
+			// loop over x-seedpoints: 2^(h+1) per hierarchy
+			for (var k=0; k<strkseedstrlenXY[h]; k++) {
 				
-				// next stroke points directions 0 and 1, both starting at current seed point xs, ys
-				xn0 = xs[seedIndex];
-				yn0 = ys[seedIndex];
-				xn1 = xs[seedIndex];
-				yn1 = ys[seedIndex];
-				xl0 = xn0; // save previous-but-one points for stroke reversal check
-				yl0 = yn0;
-				xl1 = xn1;
-				yl1 = yn1;
+				// todo: seedindex?
+				xs[strkseedstrlenXYc[h-1] + k] = half * k;
 				
-				// for each seed point: while (!strokeend) xp += grad_x and xm -=grad_x (stroke in both directions simultaneously)
-				var strokeend = false;
-				var currheight = 0.0; // gradient calculation
-				var lastmax = 0.0;
-				var lastmin = 0.0;
-				var lastmaxi = 0;
-				var lastmini = 0;
-				var nstrokes = 0; // number of strokes drawn (per direction)
-				
-				while (!strokeend) {
+				// loop over y-seedpoints: 2^(h+1) per hierarchy
+				for (var l=0; k<strkseedstrlenXY[h]; l++) {
+					// todo: seedindex?
+					ys[strkseedstrlenXYc[h-1] + k * strkseedstrlenXY[h] + l] = half * l;
+					
+					// next stroke points directions 0 and 1, both starting at current seed point xs, ys
+					xn0 = xs[k];
+					yn0 = ys[l];
+					xn1 = xs[k];
+					yn1 = ys[l];
+					xl0 = xn0; // save previous-but-one points for stroke reversal check
+					yl0 = yn0;
+					xl1 = xn1;
+					yl1 = yn1;
+					
+					// for each seed point: while (!strokeend) xp += grad_x and xm -=grad_x (stroke in both directions simultaneously)
+					var strokeend = false;
+					var currheight = 0.0; // gradient calculation
+					var lastmax = 0.0;
+					var lastmin = 0.0;
+					var lastmaxi = 0;
+					var lastmini = 0;
+					var nstrokes = 0; // number of strokes drawn (per direction)
+					
+					while (!strokeend) {
 
-					if (nstrokes > ntrokesperh / 2) break; // all strokes per hierarchy filled (stop condition 0)
-					
-					// calculate gradient at xs, ys and find direction of steepest inc/dec
-					//  0
-					// 3 1
-					//  2
-					currheight = this.get(xs[strkseedstrlenc[h]],ys[strkseedstrlenc[h]]);
-					lastmax = 0.0; // max height difference
-					lastmin = 0.0; // min height difference
-					lastmaxi = 0;
-					lastmini = 0;
-					dh[3] = this.get(xs - half / 2, ys) - currheight;
-					dh[1] = this.get(xs + half / 2, ys) - currheight;
-					dh[0] = this.get(xs, ys + half / 2) - currheight;
-					dh[2] = this.get(xs, ys - half / 2) - currheight;
-					for (var i=0; i<4; i++) {
-						if (dh[i] > lastmax) {
-							lastmax = dh[i];
-							lastmaxi = i;
+						if (nstrokes > ntrokesperh / 2) break; // all strokes per hierarchy filled (stop condition 0)
+						
+						// calculate gradient at xs, ys and find direction of steepest inc/dec
+						//  0
+						// 3 1
+						//  2
+						currheight = this.get(xs[strkseedstrlenc[h]],ys[strkseedstrlenc[h]]);
+						lastmax = 0.0; // max height difference
+						lastmin = 0.0; // min height difference
+						lastmaxi = 0;
+						lastmini = 0;
+						dh[3] = this.get(xs - half / 2, ys) - currheight;
+						dh[1] = this.get(xs + half / 2, ys) - currheight;
+						dh[0] = this.get(xs, ys + half / 2) - currheight;
+						dh[2] = this.get(xs, ys - half / 2) - currheight;
+						for (var i=0; i<4; i++) {
+							if (dh[i] > lastmax) {
+								lastmax = dh[i];
+								lastmaxi = i;
+							}
+							if (dh[i] < lastmin) {
+								lastmin = dh[i];
+								lastmini = i;
+							}
 						}
-						if (dh[i] < lastmin) {
-							lastmin = dh[i];
-							lastmini = i;
+						
+						// -------------------
+						// check stroke stops: 0 hierarchy filled, A local minimum/maximum, B ridges, C drawing limit (border), D higher-order stroke, E flat slope, F stroke reversals
+						// -------------------
+						// todo: reorder this: A, B, C...
+						
+						// follow both directions at the same time: directions 0 and 1
+						var distStep = 2 * half / ntrokesperh;
+						xn0 += sgndx[lastmaxi] * distStep;
+						yn0 += sgndy[lastmaxi] * distStep;
+						xn1 += sgndx[lastmini] * distStep;
+						yn1 += sgndy[lastmini] * distStep;
+						
+						// F stroke reversals
+						if (nstrokes > 0) {
+							var ldist0 = (xn0 - xl0) * (xn0 - xl0) + (yn0 - yl0) * (yn0 - yl0);
+							var ldist1 = (xn1 - xl1) * (xn1 - xl1) + (yn1 - yl1) * (yn1 - yl1);
+							ldist0 = Math.sqrt(ldist0);
+							ldist1 = Math.sqrt(ldist1);
+							if (ldist0 < distStep || ldist1 < distStep) {
+								strokeend = true;
+								break;
+							}
+							if (nstrokes % 2 == 0) { // only store next but one 
+								xl0 = xn0; // save previous-but-one points for stroke reversal check
+								yl0 = yn0;
+								xl1 = xn1;
+								yl1 = yn1;
+							}
 						}
-					}
-					
-					// -------------------
-					// check stroke stops: 0 hierarchy filled, A local minimum/maximum, B ridges, C drawing limit (border), D higher-order stroke, E flat slope, F stroke reversals
-					// -------------------
-					// todo: reorder this: A, B, C...
-					
-					// follow both directions at the same time: directions 0 and 1
-					var distStep = 2 * half / ntrokesperh;
-					xn0 += sgndx[lastmaxi] * distStep;
-					yn0 += sgndy[lastmaxi] * distStep;
-					xn1 += sgndx[lastmini] * distStep;
-					yn1 += sgndy[lastmini] * distStep;
-					
-					// F stroke reversals
-					if (nstrokes > 0) {
-						var ldist0 = (xn0 - xl0) * (xn0 - xl0) + (yn0 - yl0) * (yn0 - yl0);
-						var ldist1 = (xn1 - xl1) * (xn1 - xl1) + (yn1 - yl1) * (yn1 - yl1);
-						ldist0 = Math.sqrt(ldist0);
-						ldist1 = Math.sqrt(ldist1);
-						if (ldist0 < distStep || ldist1 < distStep) {
+						
+						// A local minimum/maximum
+						if (currheight > lastmax || currheight < lastmin) {
 							strokeend = true;
 							break;
 						}
-						if (nstrokes % 2 == 0) { // only store next but one 
-							xl0 = xn0; // save previous-but-one points for stroke reversal check
-							yl0 = yn0;
-							xl1 = xn1;
-							yl1 = yn1;
+						
+						// E flat-slope condition
+						if (Math.abs(currheight - lastmax) < deltalim || Math.abs(currheight - lastmin) < deltalim) {
+							strokeend = true;
+							break;
 						}
-					}
-					
-					// A local minimum/maximum
-					if (currheight > lastmax || currheight < lastmin) {
-						strokeend = true;
-						break;
-					}
-					
-					// E flat-slope condition
-					if (Math.abs(currheight - lastmax) < deltalim || Math.abs(currheight - lastmin) < deltalim) {
-						strokeend = true;
-						break;
-					}
-					
-					// B ridges
-					// ridge 0-2
-					if ((Math.abs(dh[0] - dh[2]) < deltalim) && (dh[1] < currheight) && (dh[3] < currheight)) {
-						strokeend = true;
-						break;
-					}
-					// ridge 1-3
-					if ((Math.abs(dh[1] - dh[3]) < deltalim) && (dh[0] < currheight) && (dh[2] < currheight)) {
-						strokeend = true;
-						break;
-					}			
-					
-					// C drawing limits (borders)
-					if ((Math.abs(xn0 - xs[seedIndex]) > half) || (Math.abs(yn0 - ys[seedIndex]) > half)) {
-						strokeend = true;
-						break;
-					}
-					if ((Math.abs(xn1 - xs[seedIndex]) > half) || (Math.abs(yn1 - ys[seedIndex]) > half)) {
-						strokeend = true;
-						break;
-					}
+						
+						// B ridges
+						// ridge 0-2
+						if ((Math.abs(dh[0] - dh[2]) < deltalim) && (dh[1] < currheight) && (dh[3] < currheight)) {
+							strokeend = true;
+							break;
+						}
+						// ridge 1-3
+						if ((Math.abs(dh[1] - dh[3]) < deltalim) && (dh[0] < currheight) && (dh[2] < currheight)) {
+							strokeend = true;
+							break;
+						}			
+						
+						// C drawing limits (borders)
+						if ((Math.abs(xn0 - xs[seedIndex]) > half) || (Math.abs(yn0 - ys[seedIndex]) > half)) {
+							strokeend = true;
+							break;
+						}
+						if ((Math.abs(xn1 - xs[seedIndex]) > half) || (Math.abs(yn1 - ys[seedIndex]) > half)) {
+							strokeend = true;
+							break;
+						}
 
-					// D higher-order strokes
-					// todo
-					// either check parent-squares (cumbersome) or just a stroke image file (buth then we need to render as we go...)
-					
-					// add next stroke points xn0, yn0 to storage
-					if (h==0) {
-						x[nstrokes] = xn0;
-						y[nstrokes] = yn0;
-					} else {
-						x[strkstrlenc[h-1]+nstrokes] = xn0;
-						y[strkstrlenc[h-1]+nstrokes] = yn0;				
-					}
-					
-					nstrokes++;
-					
-				} // stroke loop
-			} // seed point loop
+						// D higher-order strokes
+						// todo
+						// either check parent-squares (cumbersome) or just a stroke image file (buth then we need to render as we go...)
+						
+						// add next stroke points xn0, yn0 to storage
+						if (h==0) {
+							x[strkstrlenc[0] - ntrokesperh / 2 + nstrokes] = xn0;
+							y[strkstrlenc[0] - ntrokesperh / 2 + nstrokes] = yn0;
+							x[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = xn1;
+							y[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = yn1;
+						} else {
+							x[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = xn0;
+							y[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = yn0;
+							x[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = xn1;
+							y[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = yn1;							
+						}
+						
+						nstrokes++;
+						
+					} // stroke loop
+				} // seed point loop y
+			} // seed point loop x
 		} // mainh hierarchy loop
 		// adjust for lighting by running through stroke hierarchy images
 	  }; 
