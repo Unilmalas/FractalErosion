@@ -315,15 +315,15 @@
       Terrain.prototype.genstrokes = function() {
 		// set division hierarchy
 		var divh = 0;
-		var maxhie = 4; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
+		var maxhie = 3; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
 		// note: therefore h = (ln(screen_size) - ln(interval lgth)) / ln2
 		
 		// stroke storage: 1-dim arrays, data set by hierarchy, i.e. [-data h=0- --data h=1-- ---...]
-		var ntrokesperh = 8; // so many strokes per hierarchy (4 in each direction)
-		var strkstrindex = [0, 1, 2, 3, 4]; // hierarchy levels for strokes (hard coded, maxhie = 4)
+		var nstrokesperh = 8; // so many strokes per hierarchy (4 in each direction)
+		var strkstrindex = [0, 1, 2, 3]; // hierarchy levels for strokes (hard coded, maxhie = 4)
 		
 		var strkstrlen = strkstrindex.map(function(h) { // returns numbers of squares times strokes per square
-			return (ntrokesperh * Math.pow(4, h));
+			return (nstrokesperh * Math.pow(4, h));
 		});
 		var strkseedstrlenXY = strkstrindex.map(function(h) { // returns numbers of subdivisions in one dimension (for seed points)
 			return Math.pow(2, h);
@@ -414,7 +414,7 @@
 					var nstrokes = 0; // number of strokes drawn (per direction)
 					
 					while (!strokeend) {
-						if (nstrokes > ntrokesperh / 2) break; // all strokes per hierarchy filled (stop condition 0)
+						if (nstrokes > nstrokesperh / 2) break; // all strokes per hierarchy filled (stop condition 0)
 						
 						// calculate gradient at xs, ys and find direction of steepest inc/dec
 						//  0
@@ -453,7 +453,7 @@
 						// follow both directions at the same time: directions 0 and 1 and F no-step
 						if (lastmaxi < 0) break;
 						if (lastmini < 0) break;
-						var distStep = half / ntrokesperh;
+						var distStep = half / nstrokesperh;
 						//console.log(distStep);
 						xn0 += sgndx[lastmaxi] * distStep;
 						yn0 += sgndy[lastmaxi] * distStep;
@@ -461,8 +461,8 @@
 						yn1 += sgndy[lastmini] * distStep;
 						//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);
 						
-						// F stroke reversals
-						if (nstrokes > 0) {
+						// F stroke reversals 
+						/*if (nstrokes > 0) {
 							var ldist0 = (xn0 - xl0) * (xn0 - xl0) + (yn0 - yl0) * (yn0 - yl0);
 							var ldist1 = (xn1 - xl1) * (xn1 - xl1) + (yn1 - yl1) * (yn1 - yl1);
 							ldist0 = Math.sqrt(ldist0);
@@ -477,23 +477,23 @@
 								xl1 = xn1;
 								yl1 = yn1;
 							}
-						}
+						} */
 						
 						// A local minimum/maximum
-						if (currheight > lastmax || currheight < lastmin) {
+						/*if (currheight > lastmax || currheight < lastmin) {
 							strokeend = true;
 							break;
-						}
+						}*/
 						
 						// E flat-slope condition
-						if (Math.abs(currheight - lastmax) < deltalim || Math.abs(currheight - lastmin) < deltalim) {
+						/*if (Math.abs(currheight - lastmax) < deltalim || Math.abs(currheight - lastmin) < deltalim) {
 							strokeend = true;
 							break;
-						}
+						}*/
 						
 						// B ridges
 						// ridge 0-2
-						if ((Math.abs(dh[0] - dh[2]) < deltalim) && (dh[1] < currheight) && (dh[3] < currheight)) {
+						/*if ((Math.abs(dh[0] - dh[2]) < deltalim) && (dh[1] < currheight) && (dh[3] < currheight)) {
 							strokeend = true;
 							break;
 						}
@@ -501,7 +501,7 @@
 						if ((Math.abs(dh[1] - dh[3]) < deltalim) && (dh[0] < currheight) && (dh[2] < currheight)) {
 							strokeend = true;
 							break;
-						}			
+						}*/			
 						
 						// C drawing limits (borders)
 						if ((Math.abs(xn0 - xswork) > half) || (Math.abs(yn0 - yswork) > half)) {
@@ -519,17 +519,19 @@
 						// add next stroke points xn0, yn0 to storage
 						//console.log(strkstrlenc[0]);
 						if (h==0) {
-							x[strkstrlenc[0] - ntrokesperh / 2 + nstrokes] = xn0;
-							y[strkstrlenc[0] - ntrokesperh / 2 + nstrokes] = yn0;
-							x[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = xn1;
-							y[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = yn1;
-							console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);
+							x[strkstrlenc[0] - nstrokesperh / 2 + nstrokes] = xn0; // for nstrokes = 0 assigned twice (n0 and n1): todo: fix
+							y[strkstrlenc[0] - nstrokesperh / 2 + nstrokes] = yn0;
+							x[strkstrlenc[0] - nstrokesperh / 2 - nstrokes] = xn1;
+							y[strkstrlenc[0] - nstrokesperh / 2 - nstrokes] = yn1;
+							//console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);
+							//console.log(' strklen ' + strkstrlenc[0] + ' nstrokesperh ' + nstrokesperh + ' nstrokes ' + nstrokes);
 						} else {
-							x[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = xn0;
-							y[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = yn0;
-							x[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = xn1;
-							y[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = yn1;	
-							console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);							
+							x[strkstrlenc[h-1] + nstrokesperh / 2 + nstrokes] = xn0;
+							y[strkstrlenc[h-1] + nstrokesperh / 2 + nstrokes] = yn0;
+							x[strkstrlenc[h-1] + nstrokesperh / 2 - nstrokes] = xn1;
+							y[strkstrlenc[h-1] + nstrokesperh / 2 - nstrokes] = yn1;	
+							//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);	
+							//console.log(' index ' + (strkstrlenc[h-1] + nstrokesperh / 2 - nstrokes));							
 						}
 						
 						nstrokes++;
@@ -545,7 +547,8 @@
 		
 		/*for (k=0; k<strkstrlenc[2]; k++)
 			for (l=0; l<strkstrlenc[2]; l++) {
-				console.log('x ' + x[k] + 'y ' + y[l]);
+				if ( typeof x[k] != 'undefined' && typeof y[l] != 'undefined')
+					console.log('x ' + x[k] + ' y ' + y[l]);
 			}*/
 		
 	  }; 
