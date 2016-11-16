@@ -385,10 +385,8 @@
 				else seedIndex = strkseedstrlenXYc[h-1];
 				xs[seedIndex + k] = half * k + half / 2;
 				xswork = xs[seedIndex + k];
-
 				// loop over y-seedpoints: 2^(h+1) per hierarchy
 				for (var l=0; l<strkseedstrlenXY[h]; l++) {
-
 					ys[seedIndex + k * strkseedstrlenXY[h] + l] = half * l + half / 2;
 					yswork = ys[seedIndex + k * strkseedstrlenXY[h] + l];
 					//console.log('xs ' + xs[seedIndex + k].toPrecision(2));
@@ -415,7 +413,6 @@
 					var nstrokes = 0; // number of strokes drawn (per direction)
 					
 					while (!strokeend) {
-
 						if (nstrokes > ntrokesperh / 2) break; // all strokes per hierarchy filled (stop condition 0)
 						
 						// calculate gradient at xs, ys and find direction of steepest inc/dec
@@ -424,24 +421,25 @@
 						//  2
 						currheight = this.get(xswork, yswork);
 						lastmax = 0.0; // max height difference
-						lastmin = 0.0; // min height difference
+						lastmin = 1000.0; // min height difference
 						lastmaxi = 0;
 						lastmini = 0;
 						// need to check here: for higher hierarchies, do we need to take an average of larger areas instead of just points?
-						dh[3] = this.get(xswork - half / 2, yswork) - currheight;
-						dh[1] = this.get(xswork + half / 2, yswork) - currheight;
-						dh[0] = this.get(xswork, yswork + half / 2) - currheight;
-						dh[2] = this.get(xswork, yswork - half / 2) - currheight;
+						//console.log('xswork ' + xswork + ' yswork ' + yswork + ' half ' + half);
+						dh[3] = this.get(~~(xswork - half / 2), ~~yswork) - currheight;
+						dh[1] = this.get(~~(xswork + half / 2), ~~yswork) - currheight;
+						dh[0] = this.get(~~xswork, ~~(yswork + half / 2)) - currheight;
+						dh[2] = this.get(~~xswork, ~~(yswork - half / 2)) - currheight;
 						for (var i=0; i<4; i++) {
 							if (dh[i] > lastmax) {
 								lastmax = dh[i];
 								lastmaxi = i;
-							}
-							if (dh[i] < lastmin) {
+							} else if (dh[i] < lastmin) {
 								lastmin = dh[i];
 								lastmini = i;
 							}
 						}
+						console.log('lastmax ' + lastmax + ' lastmaxi ' + lastmaxi + ' lastmin ' + lastmin + ' lastmini ' + lastmini);
 						
 						// -------------------
 						// check stroke stops: 0 hierarchy filled, A local minimum/maximum, B ridges, C drawing limit (border), D higher-order stroke, E flat slope, F stroke reversals
@@ -449,11 +447,13 @@
 						// todo: reorder this: A, B, C...
 						
 						// follow both directions at the same time: directions 0 and 1
-						var distStep = 2 * half / ntrokesperh;
+						var distStep = half / ntrokesperh;
+						//console.log(distStep);
 						xn0 += sgndx[lastmaxi] * distStep;
 						yn0 += sgndy[lastmaxi] * distStep;
 						xn1 += sgndx[lastmini] * distStep;
 						yn1 += sgndy[lastmini] * distStep;
+						//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);
 						
 						// F stroke reversals
 						if (nstrokes > 0) {
@@ -506,7 +506,6 @@
 							strokeend = true;
 							break;
 						}
-
 						// D higher-order strokes
 						// todo
 						// either check parent-squares (cumbersome) or just a stroke image file (buth then we need to render as we go...)
@@ -518,13 +517,13 @@
 							y[strkstrlenc[0] - ntrokesperh / 2 + nstrokes] = yn0;
 							x[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = xn1;
 							y[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = yn1;
-							console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);
+							//console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);
 						} else {
 							x[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = xn0;
 							y[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = yn0;
 							x[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = xn1;
 							y[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = yn1;	
-							console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);							
+							//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);							
 						}
 						
 						nstrokes++;
