@@ -315,12 +315,12 @@
       Terrain.prototype.genstrokes = function() {
 		// set division hierarchy
 		var divh = 0;
-		var maxhie = 3; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
+		var maxhie = 4; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
 		// note: therefore h = (ln(screen_size) - ln(interval lgth)) / ln2
 		
 		// stroke storage: 1-dim arrays, data set by hierarchy, i.e. [-data h=0- --data h=1-- ---...]
 		var ntrokesperh = 8; // so many strokes per hierarchy (4 in each direction)
-		var strkstrindex = [0, 1, 2, 3]; // hierarchy levels for strokes (hard coded, maxhie = 4)
+		var strkstrindex = [0, 1, 2, 3, 4]; // hierarchy levels for strokes (hard coded, maxhie = 4)
 		
 		var strkstrlen = strkstrindex.map(function(h) { // returns numbers of squares times strokes per square
 			return (ntrokesperh * Math.pow(4, h));
@@ -368,6 +368,7 @@
 		var size = this.size;
 		var half = size;
 		var xswork = 0, yswork = 0;
+		//console.log('size ' + size + ' half ' + half);
 		
 		// main hierarchy loop
 		for (h=0; h<maxhie; h++) {
@@ -419,34 +420,39 @@
 						//  0
 						// 3 1
 						//  2
-						currheight = this.get(xswork, yswork);
-						lastmax = 0.0; // max height difference
+						currheight = this.get(~~xswork, ~~yswork);
+						lastmax = -1000.0; // max height difference
 						lastmin = 1000.0; // min height difference
-						lastmaxi = 0;
-						lastmini = 0;
+						lastmaxi = -1;
+						lastmini = -1;
 						// need to check here: for higher hierarchies, do we need to take an average of larger areas instead of just points?
-						//console.log('xswork ' + xswork + ' yswork ' + yswork + ' half ' + half);
+						//console.log('xswork ' + xswork + ' yswork ' + yswork + ' half/2 ' + half/2 + ' cheight ' + currheight.toPrecision(2));
 						dh[3] = this.get(~~(xswork - half / 2), ~~yswork) - currheight;
 						dh[1] = this.get(~~(xswork + half / 2), ~~yswork) - currheight;
 						dh[0] = this.get(~~xswork, ~~(yswork + half / 2)) - currheight;
 						dh[2] = this.get(~~xswork, ~~(yswork - half / 2)) - currheight;
+						//console.log(' dh 0 ' + dh[0].toPrecision(2) + ' 1 ' + dh[1].toPrecision(2) + ' 2 ' + dh[2].toPrecision(2) + ' 3 ' + dh[3].toPrecision(2) + ' currhgth ' + currheight.toPrecision(2));
 						for (var i=0; i<4; i++) {
 							if (dh[i] > lastmax) {
 								lastmax = dh[i];
 								lastmaxi = i;
+								//console.log('max found: ' + i + ' dh ' + dh[i].toPrecision(2));
 							} else if (dh[i] < lastmin) {
 								lastmin = dh[i];
 								lastmini = i;
+								//console.log('min found: ' + i + ' dh ' + dh[i].toPrecision(2));
 							}
 						}
-						console.log('lastmax ' + lastmax + ' lastmaxi ' + lastmaxi + ' lastmin ' + lastmin + ' lastmini ' + lastmini);
+						//console.log('lastmax ' + lastmax.toPrecision(2) + ' lastmaxi ' + lastmaxi + ' lastmin ' + lastmin.toPrecision(2) + ' lastmini ' + lastmini);
 						
 						// -------------------
-						// check stroke stops: 0 hierarchy filled, A local minimum/maximum, B ridges, C drawing limit (border), D higher-order stroke, E flat slope, F stroke reversals
+						// check stroke stops: 0 hierarchy filled, A local minimum/maximum, B ridges, C drawing limit (border), D higher-order stroke, E flat slope, F stroke reversals/no-step
 						// -------------------
 						// todo: reorder this: A, B, C...
 						
-						// follow both directions at the same time: directions 0 and 1
+						// follow both directions at the same time: directions 0 and 1 and F no-step
+						if (lastmaxi < 0) break;
+						if (lastmini < 0) break;
 						var distStep = half / ntrokesperh;
 						//console.log(distStep);
 						xn0 += sgndx[lastmaxi] * distStep;
@@ -467,7 +473,7 @@
 							}
 							if (nstrokes % 2 == 0) { // only store next but one 
 								xl0 = xn0; // save previous-but-one points for stroke reversal check
-								yl0 = yn0;
+								yl0 = yn0; // todo: what if those points have not been set
 								xl1 = xn1;
 								yl1 = yn1;
 							}
@@ -517,13 +523,13 @@
 							y[strkstrlenc[0] - ntrokesperh / 2 + nstrokes] = yn0;
 							x[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = xn1;
 							y[strkstrlenc[0] - ntrokesperh / 2 - nstrokes] = yn1;
-							//console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);
+							console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);
 						} else {
 							x[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = xn0;
 							y[strkstrlenc[h-1] + ntrokesperh / 2 + nstrokes] = yn0;
 							x[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = xn1;
 							y[strkstrlenc[h-1] + ntrokesperh / 2 - nstrokes] = yn1;	
-							//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);							
+							console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);							
 						}
 						
 						nstrokes++;
