@@ -324,24 +324,29 @@
 		var nstrokesperh = 8; // so many strokes per hierarchy (4 in each direction)
 		var strkstrindex = [0, 1, 2, 3, 4]; // hierarchy levels for strokes (hard coded, maxhie = 4)
 		
-		var strkstrlen = strkstrindex.map(function(h) { // returns numbers of squares times strokes per square
-			return (nstrokesperh * Math.pow(4, h));
-		});
-		var strkseedstrlenXY = strkstrindex.map(function(h) { // returns numbers of subdivisions in one dimension (for seed points)
-			return Math.pow(2, h);
-		});
-		var strkseedstrlen = strkstrindex.map(function(h) { // returns numbers of squares (for seed points)
+		function nsdiv(h) { // returns numbers of subdivisions in one dimension (for seed points)
+			return h<0 ? 0 : Math.pow(2, h);
+		}
+		
+		function nsdivc(h) { // returns cumulative number of subdivisions in one dimension (for seed points)
+			return h<0 ? 0 : (Math.pow(2, h+1) - 1);
+		}
+		
+		function nsqurs(h) { // returns numbers of squares (for seed points)
 			return Math.pow(4, h);
-		});
-		var strkstrlenc = strkstrindex.map(function(h) { // returns cumulative lengths for strokes: access array at current hierarchy
-			return (h==0) ? (strkstrlen[h]) : (strkstrlen[h-1] + strkstrlen[h]);
-		});
-		var strkseedstrlenXYc = strkstrindex.map(function(h) { // returns numbers of subdivisions in one dimension cumulative (for seed points)
-			return (h==0) ? (strkseedstrlenXY[h]) : (strkseedstrlenXY[h-1] + strkseedstrlenXY[h]);
-		});
-		var strkseedstrlenc = strkstrindex.map(function(h) { // returns cumulative lengths for seed points
-			return (h==0) ? (strkseedstrlen[h]) : (strkseedstrlen[h-1] + strkseedstrlen[h]);
-		});
+		}
+		
+		function nsqursc(h) { // returns cumulative number of squares for seed points
+			return h<0 ? 0 : (Math.pow(4, h+1) - 1) / 3;
+		}
+		
+		function nsqursstr(h) { // returns numbers of squares times strokes per square
+			return h<0 ? 0 : (nstrokesperh * nsqurs(h));
+		}
+		
+		function nsqursstrc(h) { // returns cumulative lengths for strokes: access array at current hierarchy
+			return h<0 ? 0 : (nstrokesperh * nsqursc(h));
+		}
 		
 		// init data fields: 1-dim arrays, hierarchy 0, then 1 etc., lengths increase due to subdivisions
 		//var x = []; // stroke points
@@ -350,14 +355,14 @@
 		var ys = [];
 		
 		// create an access function that fetches all values for a given hierarchy
-		function gethierdata(myh) {
+		/*function gethierdata(myh) {
 			var loweri = (myh==0) ? 0 : strkstrlenc[myh-1];
 			var upperi = strkstrlenc[myh];
 			for(var i=loweri; i<upperi; i++) {
 				outstr1 += x[i] + " ";
 			}
 			return 0;
-		} 
+		} */
 		
 		// corner indices for gradient patch
 		var sgndx = [0,1,0,-1];
@@ -372,29 +377,31 @@
 		var xswork = 0, yswork = 0;
 		//console.log('size ' + size + ' half ' + half);
 		
-		// main hierarchy loop
-		for (h=0; h<maxhie; h++) {
+		for (h=0; h<maxhie; h++) { // main hierarchy loop
+		
 			// starting at h=0 determine seed points, calculate strokes
 			var dh = [0.0, 0.0, 0.0, 0.0]; // height difference in 4 directions
 			// x = half -> size + half: next subdivision
-			
 			// set all seed points for current hierarchy
 			var seedIndex = 0;
+			var distStep = half / nstrokesperh;
 			
-			// loop over x-seedpoints: 2^(h+1) per hierarchy
-			for (var k=0; k<strkseedstrlenXY[h]; k++) {
+			for (var k=0; k<nsdiv(h); k++) { // loop over x-seedpoints: 2^(h+1) per hierarchy
 				
-				if (h==0) seedIndex = 0
-				else seedIndex = strkseedstrlenXYc[h-1];
+				if (h==0) seedIndex = 0;
+				else if (h==1) seedIndex = 1;
+				else seedIndex = nsdivc(h-1);
 				xs[seedIndex + k] = half * k + half / 2;
 				xswork = xs[seedIndex + k];
-				// loop over y-seedpoints: 2^(h+1) per hierarchy
-				for (var l=0; l<strkseedstrlenXY[h]; l++) {
-					ys[seedIndex + k * strkseedstrlenXY[h] + l] = half * l + half / 2;
-					yswork = ys[seedIndex + k * strkseedstrlenXY[h] + l];
+				//console.log('seedIndex ' + seedIndex + ' seed+k ' + (seedIndex + k) + ' nsdiv h ' + nsdiv(h));
+				
+				for (var l=0; l<nsdiv(h); l++) { // loop over y-seedpoints: 2^(h+1) per hierarchy
+					ys[seedIndex + k * nsdiv(h) + l] = half * l + half / 2;
+					yswork = ys[seedIndex + k * nsdiv(h) + l];
 					//console.log('xs ' + xs[seedIndex + k].toPrecision(2));
-					//console.log('ys ' + ys[seedIndex + k * strkseedstrlenXY[h] + l].toPrecision(2));
-					//console.log('size ' + size + ' upper index ' + strkseedstrlenXY[h] + ' h ' + h);
+					//console.log('ys ' + ys[seedIndex + k * nsdiv(h) + l].toPrecision(2));
+					//console.log('size ' + size + ' upper index ' + nsdiv(h) + ' h ' + h);
+					//console.log('**********seed k ' + k + ' l ' + l + ' xs ' + xswork + ' ys ' + yswork);
 					
 					// next stroke points directions 0 and 1, both starting at current seed point xs, ys
 					xn0 = xswork;
@@ -455,8 +462,7 @@
 						// follow both directions at the same time: directions 0 and 1 and F no-step
 						if (lastmaxi < 0) break;
 						if (lastmini < 0) break;
-						var distStep = half / nstrokesperh;
-						//console.log(distStep);
+						
 						xn0 += sgndx[lastmaxi] * distStep;
 						yn0 += sgndy[lastmaxi] * distStep;
 						xn1 += sgndx[lastmini] * distStep;
@@ -503,38 +509,32 @@
 						if ((Math.abs(dh[1] - dh[3]) < deltalim) && (dh[0] < currheight) && (dh[2] < currheight)) {
 							strokeend = true;
 							break;
-						}*/			
+						}*/
 						
 						// C drawing limits (borders)
-						if ((Math.abs(xn0 - xswork) > half) || (Math.abs(yn0 - yswork) > half)) {
+						/*if ((Math.abs(xn0 - xswork) > half) || (Math.abs(yn0 - yswork) > half)) {
 							strokeend = true;
 							break;
 						}
 						if ((Math.abs(xn1 - xswork) > half) || (Math.abs(yn1 - yswork) > half)) {
 							strokeend = true;
 							break;
-						}
+						}*/
 						// D higher-order strokes
 						// todo
 						// either check parent-squares (cumbersome) or just a stroke image file (buth then we need to render as we go...)
 						
 						// add next stroke points xn0, yn0 to storage
-						//console.log(strkstrlenc[0]);
-						if (h==0) {
-							this.x[strkstrlenc[0] - nstrokesperh / 2 + nstrokes] = xn0; // for nstrokes = 0 assigned twice (n0 and n1): todo: fix
-							this.y[strkstrlenc[0] - nstrokesperh / 2 + nstrokes] = yn0;
-							this.x[strkstrlenc[0] - nstrokesperh / 2 - nstrokes] = xn1;
-							this.y[strkstrlenc[0] - nstrokesperh / 2 - nstrokes] = yn1;
-							//console.log(xn0 + ' ' + yn0 + ' ' + xn1 + ' ' + yn1);
-							//console.log(' strklen ' + strkstrlenc[0] + ' nstrokesperh ' + nstrokesperh + ' nstrokes ' + nstrokes);
-						} else {
-							this.x[strkstrlenc[h-1] + nstrokesperh / 2 + nstrokes] = xn0;
-							this.y[strkstrlenc[h-1] + nstrokesperh / 2 + nstrokes] = yn0;
-							this.x[strkstrlenc[h-1] + nstrokesperh / 2 - nstrokes] = xn1;
-							this.y[strkstrlenc[h-1] + nstrokesperh / 2 - nstrokes] = yn1;	
-							//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);	
-							//console.log(' index ' + (strkstrlenc[h-1] + nstrokesperh / 2 - nstrokes));							
-						}
+						var locind0 = nsqursstrc(h) + l * nstrokesperh + k * nstrokesperh - nstrokesperh / 2 + nstrokes;
+						var locind1 = nsqursstrc(h) + l * nstrokesperh + k * nstrokesperh - nstrokesperh / 2 - nstrokes;							
+
+						this.x[locind0] = xn0; // for nstrokes = 0 assigned twice (n0 and n1): todo: fix
+						this.y[locind0] = yn0;
+						this.x[locind1] = xn1; 
+						this.y[locind1] = yn1;
+						//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);	
+						//console.log(' index ' + locind0);	
+						//console.log('k ' + k + ' l ' + l + ' x0 ' + ~~xn0 + ' y0 ' + ~~yn0);
 						
 						nstrokes++;
 						
@@ -545,6 +545,10 @@
 			half /= 2;
 			
 		} // mainh hierarchy loop
+		
+		// checks
+		//for ( var k=0; k<nsqursstrc(maxhie); k++) console.log('k ' + k + ' x ' + this.x[k]);
+		
 		// adjust for lighting by running through stroke hierarchy images
 		
 		
@@ -562,24 +566,21 @@
 		var nstrokesperh = 8; // so many strokes per hierarchy (4 in each direction)
 		var strkstrindex = [0, 1, 2, 3, 4]; // hierarchy levels for strokes (hard coded, maxhie = 4)
 		
-		var strkstrlen = strkstrindex.map(function(h) { // returns numbers of squares times strokes per square
-			return (nstrokesperh * Math.pow(4, h));
-		});
-		var strkseedstrlenXY = strkstrindex.map(function(h) { // returns numbers of subdivisions in one dimension (for seed points)
-			return Math.pow(2, h);
-		});
-		var strkseedstrlen = strkstrindex.map(function(h) { // returns numbers of squares (for seed points)
+		function nsqurs(h) { // returns numbers of squares (for seed points)
 			return Math.pow(4, h);
-		});
-		var strkstrlenc = strkstrindex.map(function(h) { // returns cumulative lengths for strokes: access array at current hierarchy
-			return (h==0) ? (strkstrlen[h]) : (strkstrlen[h-1] + strkstrlen[h]);
-		});
-		var strkseedstrlenXYc = strkstrindex.map(function(h) { // returns numbers of subdivisions in one dimension cumulative (for seed points)
-			return (h==0) ? (strkseedstrlenXY[h]) : (strkseedstrlenXY[h-1] + strkseedstrlenXY[h]);
-		});
-		var strkseedstrlenc = strkstrindex.map(function(h) { // returns cumulative lengths for seed points
-			return (h==0) ? (strkseedstrlen[h]) : (strkseedstrlen[h-1] + strkseedstrlen[h]);
-		});
+		}
+		
+		function nsqursc(h) { // returns cumulative number of squares for seed points
+			return h<0 ? 0 : (Math.pow(4, h+1) - 1) / 3;
+		}
+		
+		function nsqursstr(h) { // returns numbers of squares times strokes per square
+			return h<0 ? 0 : (nstrokesperh * nsqurs(h));
+		}
+		
+		function nsqursstrc(h) { // returns cumulative lengths for strokes: access array at current hierarchy
+			return h<0 ? 0 : (nstrokesperh * nsqursc(h));
+		}
 		
 		var self = this;
 		var tsize = this.size;
@@ -588,37 +589,44 @@
 		// nested loops that drew rectangles from the 'back' (y = 0) to the 'front' (y = this.size) of our map
 		for (h=0; h<=maxhie; h++) { // loop over hierarchy
 			
-			var hind = h==0 ? (strkstrlenc[0] - nstrokesperh / 2) : (strkstrlenc[h-1] + nstrokesperh / 2); // midpoint index for hiearchy stroke storage access
-			var lowind = hind - nstrokesperh / 2; // lower
-			var uppind = hind + nstrokesperh / 2; // upper
+			//console.log('h ' + h + ' nsqursstrks cum ' + nsqursstrc(h));
 			
-			ctx.beginPath();
-			ctx.strokeStyle="red";
-			var strokeStarted = true;
+			for ( hind = nsqursstrc(h-1); hind < nsqursstrc(h); hind += nstrokesperh) {
 			
-			for (k=lowind; k<uppind; k++) { // loop over strokepoints
-			
-				//console.log(lowind + ' upper ' + uppind);
-				console.log(this.x[k] + ' y ' + this.y[k]);
-
-				if ( typeof this.x[k] != 'undefined' && typeof this.y[k] != 'undefined') {
+				// draw a single stroke ////////////////////////////
+				var lowind = hind; // lower
+				var uppind = hind + nstrokesperh; // upper
+				//console.log('lower ' + lowind + ' upper ' + uppind);
 				
-					var val = this.get(~~this.x[k], ~~this.y[k]); // get height at current stroke point
-					//console.log(val + ' y ' + this.y[k]);
-					var top = project(this.x[k], this.y[k], val);
-					//console.log(top.x + ' y ' + top.y);
+				ctx.beginPath();
+				ctx.strokeStyle = "red";
+				ctx.lineWidth = 5 - h; // adjust line width by stroke hierarchy
+				var strokeStarted = true;
+				
+				for (k = lowind; k<uppind; k++) { // loop over strokepoints
+				
+					//console.log(lowind + ' upper ' + uppind);
+					//console.log(this.x[k] + ' y ' + this.y[k]);
 
-					if (strokeStarted) {
-						ctx.moveTo(top.x, top.y);
-						strokeStarted = false;
+					if ( typeof this.x[k] != 'undefined' && typeof this.y[k] != 'undefined') {
+					
+						var val = this.get(~~this.x[k], ~~this.y[k]); // get height at current stroke point
+						//console.log(val + ' y ' + this.y[k]);
+						var top = project(this.x[k], this.y[k], val);
+						//console.log(top.x + ' y ' + top.y);
+
+						if (strokeStarted) {
+							ctx.moveTo(top.x, top.y);
+							strokeStarted = false;
+						}
+						
+						ctx.lineTo(top.x, top.y);
 					}
-					
-					ctx.lineTo(top.x, top.y);
-					
-					
 				}
+				ctx.stroke();
+				// end drawing a single stroke //////////////////////
 			}
-			ctx.stroke();
+				
 		}
 		
 		// set point brightness
