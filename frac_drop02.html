@@ -621,7 +621,7 @@
 				//console.log('lower ' + lowind + ' upper ' + uppind);
 				
 				ctx.beginPath();
-				ctx.strokeStyle = "OrangeRed";
+				ctx.strokeStyle = "DarkSlateGray";
 				ctx.lineWidth = 5 - h; // adjust line width by stroke hierarchy
 				var strokeStarted = true;
 				
@@ -640,8 +640,8 @@
 						// lighting
 						var lightval = (-lx * this.p[k] - ly * this.q[k] + lz) / Math.sqrt(1.0 + this.p[k] * this.p[k] + this.q[k] * this.q[k]);
 						//console.log('lighting: ' + lightval);
-						if (lightval < ti) ctx.lineWidth = 5 - h;
-						else break; //ctx.lineWidth = 3 - h;
+						if (lightval < ti) ctx.strokeStyle = "Yellow"; //ctx.lineWidth = 5 - h;
+						else ctx.strokeStyle = "DarkSlateGray"; //break; //ctx.lineWidth = 3 - h;
 
 						if (strokeStarted) {
 							ctx.moveTo(top.x, top.y);
@@ -702,7 +702,7 @@
 	  //terrain.generate_test(); // test terrain to adjust erosion parameters
       terrain.generate(1.5);
 	  terrain.erode(100); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
-      terrain.draw(ctx, width, height); // comment this out to show only stroke draws
+      //terrain.draw(ctx, width, height); // comment this out to show only stroke draws
 	  terrain.genstrokes();
 	  terrain.drawStrokes(ctx, width, height);
     </script>
