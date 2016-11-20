@@ -1,0 +1,710 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Terrain Demo</title>
+  </head>
+  <body style='background: #000'>
+    <canvas id='display' width='1' height='1' />
+
+    <script>
+		
+	  // terrain generation from http://www.playfuljs.com/realistic-terrain-in-130-lines/
+		
+      function Terrain(detail) {
+        this.size = Math.pow(2, detail) + 1;
+        this.max = this.size - 1;
+        this.map = new Float32Array(this.size * this.size);
+		this.x = []; // stroke point x
+		this.y = []; // same y
+		this.p = []; // gradient at stroke point x (for lighting)
+		this.q = []; // same y
+      }
+	  
+	  // get terrain height at x, y
+      Terrain.prototype.get = function(x, y) {
+        //if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+		if(x<0) x=0;
+		if(y<0) y=0;
+		if(x>this.max) x=this.max;
+		if(y>this.max) y=this.max;
+        return this.map[x + this.size * y];
+      };
+	  
+	  // set terrain height at x, y
+      Terrain.prototype.set = function(x, y, val) {
+        this.map[x + this.size * y] = val; // only 1-dim arrays in js
+      };	  
+	  
+	  // object initialization
+      Terrain.prototype.generate = function(roughness) {
+        var self = this;
+		
+		// set the corners to a 'seed' value which will influence the rest of the rendering.
+		// This would start all the corners halfway up the cube
+		for (x = 0; x < self.max; x += 1) {
+              this.set(x, 0, self.max / 2);
+        }
+		// leave the other side of the cube as it was
+        this.set(this.max, this.max, 0);
+        this.set(0, this.max, self.max / 2);
+		// subdivision calls
+        divide(this.max);
+		
+		// recursively look at smaller and smaller divisions of the height map
+		// At each division, we'll split the map into squares and update their 
+		// center points during the square phase. Then, we'll split the map into 
+		// diamonds and update their center points during the diamond phase
+        function divide(size) {
+          var x, y, half = size / 2;
+          var scale = roughness * size; // size of offsets decreases with divisions
+		  
+          if (half < 1) return;
+		  
+		  // TODO: speed this up
+          for (y = half; y < self.max; y += size) {
+            for (x = half; x < self.max; x += size) {
+              square(x, y, half, Math.random() * scale * 2 - scale);
+            }
+          }
+		  
+          for (y = 0; y <= self.max; y += half) {
+            for (x = (y + half) % size; x <= self.max; x += size) {
+				diamond(x, y, half, Math.random() * scale * 2 - scale);
+            }
+          }
+          divide(size / 2); // recursive call
+        }
+		
+        function average(values) {
+          var valid = values.filter(function(val) { return val !== -1; });
+          var total = valid.reduce(function(sum, val) { return sum + val; }, 0);
+          return total / valid.length;
+        }
+		
+		// square phase averages four corner points before applying a random offset
+        function square(x, y, size, offset) {
+          var ave = average([
+            self.get(x - size, y - size),   // upper left
+            self.get(x + size, y - size),   // upper right
+            self.get(x + size, y + size),   // lower right
+            self.get(x - size, y + size)    // lower left
+          ]);
+          self.set(x, y, ave + offset);
+        }
+		
+		// diamond phase averages four edge points before applying a random offset
+        function diamond(x, y, size, offset) {
+          var ave = average([
+            self.get(x, y - size),      // top
+            self.get(x + size, y),      // right
+            self.get(x, y + size),      // bottom
+            self.get(x - size, y)       // left
+          ]);
+          self.set(x, y, ave + offset);
+        }
+      };
+	  
+		// testterrain for erosion to adjust parameters
+		Terrain.prototype.generate_test = function() {
+			var self = this;
+			var smax = self.max;
+			var smax3 = Math.floor(smax/3);
+			var smax23 = 2*smax3;
+			var x, y, h = 0;
+			
+			for (y = 0; y <= smax; y += 1) {
+				for (x = 0; x <= smax; x += 1) {
+					h=0;			
+					if((x>smax3) && (x<2*smax3)) {
+						if((y>smax3) && (y<2*smax3)) h=((x-y) + smax3)
+						else h=0;
+					}
+					self.set(x, y, h);
+				}
+			}
+		};
+		
+	  // *************** Erosion ***************************************
+	  Terrain.prototype.erode = function(ndrops) {
+		// adapted from http://ranmantaru.com/blog/2011/10/08/water-erosion-on-heightmap-terrain/
+		// number of drops falling and eroding along gradient path
+		
+		var Kg = 2 * 9.81; // 2*g
+		var Kevap = 0.001; // water evaporation per cycle step 0.001
+		var Kr = 1.0; // erosion speed 0.9
+		var Kq = 20; // soil carry capacity 10
+		var Kd = 0.2; // deposit speed 0.02
+		var Ki = 1.2; // direction inertia 0.1
+		// Kq=10; Kw=0.001f; Kr=0.9f; Kd=0.02f; Ki=0.1f; minSlope=0.05f; g=20;
+		var steplim = 30; // test !!!
+		
+		for (var i = 0; i < ndrops; i++) {
+			var xp, yp;
+			//var dgrid = Math.floor(this.size / 8);
+			var dgrid = 2;
+			var steps = 0;
+			
+			// starting point of erosion - random drop
+			var xi=Math.floor((Math.random() * (this.size-dgrid-2)) + 2);
+			var yi=Math.floor((Math.random() * (this.size-dgrid-2)) + 2);
+			xp=xi;
+			yp=yi;
+			
+			var dx=0;
+			var dy=0;	
+			var v=0, evap=1;
+			var slipm=0; // mass slipping with drop
+			var h = 0; // current height
+			var hpatch = [0,0,0,0];
+			var sgndx = [-1,1,1,-1];
+			var sgndy = [-1,-1,1,1];
+			
+			// main erosion loop for one path		
+			do {
+				h = this.get(xi, yi);
+				// calculate gradient
+				hpatch[0]=(this.get(xi-1, yi-1) + (this.get(xi-1, yi) + this.get(xi, yi-1))/2)/2;
+				hpatch[1]=(this.get(xi+1, yi-1) + (this.get(xi, yi-1) + this.get(xi+1, yi))/2)/2;
+				hpatch[2]=(this.get(xi+1, yi+1) + (this.get(xi+1, yi) + this.get(xi, yi+1))/2)/2;
+				hpatch[3]=(this.get(xi-1, yi+1) + (this.get(xi-1, yi) + this.get(xi, yi+1))/2)/2;
+				var kmin = -1;
+				var hmin = h;
+				for(var k=0; k<4; k++) {
+					if(hpatch[k]<=hmin) {
+						kmin = k;
+						hmin = hpatch[k];
+					}
+				}
+				var gradx=0;
+				var grady=0;
+				if(kmin>0) {
+					gradx = sgndx[kmin];
+					grady = sgndy[kmin];
+				} else {
+					// local minimum - deposit all
+					this.set(xi, yi, Math.min(h + slipm, h*1.04));
+					break;
+				}
+				dx = (dx - gradx) * Ki * Math.random() + gradx; // add a random element to preventing bouncing back and forth
+				dy = (dy - grady) * Ki * Math.random() + grady;				
+				
+				// next point = current point + gradient
+				var nxp = xp + dx;
+				var nyp = yp + dy;
+				// sample next height
+				var nxi = ~~(nxp); // faster substitute for Math.floor()
+				var nyi = ~~(nyp);
+				var nh=hmin; // next height is the height at the next gradient step
+				
+				// compute transport capacity
+				var dh = h - nh;
+				var slope = dh / Math.sqrt(1 + dh * dh);
+				// compute the transportable quantity
+				var q = slope * v * evap * Kq;
+				// deposit/erode (don't erode more than dh)
+				// deposit total eroded mass slipm - transported quantity q
+				var ds = slipm - q;
+				//console.log('ds ' + ds.toPrecision(2) + ' slipm ' + slipm.toPrecision(2) + ' q ' + q.toPrecision(2));
+				
+				if(ds>0) { // deposit
+					ds *= Kd;
+				} else { // erode
+					ds *= Kr;
+				}
+				// distribute to neighboring points
+				this.set(xi, yi, nh + ds/3);
+				this.set(xi-1, yi, this.get(xi-1, yi) + ds/12);
+				this.set(xi+1, yi, this.get(xi+1, yi) + ds/12);
+				this.set(xi, yi-1, this.get(xi, yi-1) + ds/12);
+				this.set(xi, yi+1, this.get(xi, yi+1) + ds/12);
+				this.set(xi-1, yi-1, this.get(xi-1, yi-1) + ds/12);
+				this.set(xi+1, yi+1, this.get(xi+1, yi+1) + ds/12);
+				this.set(xi+1, yi-1, this.get(xi+1, yi-1) + ds/12);
+				this.set(xi-1, yi+1, this.get(xi-1, yi+1) + ds/12);
+				slipm -= ds;
+				
+				// move to the neighbour
+				v = Math.min(v * Ki * Math.random(), Math.sqrt(Math.abs(v * v + Kg * dh))); // high speeds v seem to be a problem...
+				evap *= (1 - Kevap);
+				
+				xp = nxp; yp = nyp;
+				xi = nxi; yi = nyi;
+				h=nh;	  
+				steps++;
+			} while (steps < steplim);
+		}
+	  };
+	
+	  // render ******************************************************
+      Terrain.prototype.draw = function(ctx, width, height) {
+        var self = this;
+		var tsize = this.size;
+        //var waterVal = this.size * 0.3;
+		
+		// nested loops that drew rectangles from the 'back' (y = 0) to the 'front' (y = this.size) of our map
+        for (var y = 1; y < tsize-1; y++) { // starting at 1 and going till size-1 due to boundary condition issues
+          for (var x = 1; x < tsize-1; x++) {
+            var val = this.get(x, y);
+            var top = project(x, y, val);
+            //var bottom = project(x + 1, y, 0);
+            //var style = brightness(x, y, this.get(x + 1, y) - val);
+			
+			if (x == 1 && y == 1) {
+				ctx.beginPath();
+				ctx.strokeStyle="green";
+			}
+			
+		    if (x == 1) {
+				ctx.stroke();
+				ctx.beginPath();
+				ctx.strokeStyle="green";
+				ctx.moveTo(top.x, top.y);
+				//console.log("y==0 " + top.x + " " + top.y);
+			} else {
+				ctx.lineTo(top.x, top.y);
+				//rect(top, bottom, style);
+			}
+          }
+        }
+        function rect(a, b, style) {
+          if (b.y < a.y) return;
+		  // this draws the rectangle to the screen
+          ctx.fillStyle = style;
+		  // x upper left, y upper left, width, height
+          //ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+		  ctx.strokeStyle="green";
+		  //ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+		  //ctx.beginPath();
+		  //ctx.moveTo(a.x, a.y);
+		  //ctx.lineTo(b.x, b.y);
+		  //ctx.stroke();
+		  ctx.strokeRect(a.x-1, a.y-1, 1, 1);
+        }
+		
+		// set point brightness
+        function brightness(x, y, slope) {
+          if (y === self.max || x === self.max) return '#000';
+		  // compare our current height value against the next point's height value to find a slope
+		  // draw brighter rectangles for higher slopes to fill one side with light and the other with shadow
+		  // ~~ is double NOT bitwise operator, faster for Math.floor()
+          var b = ~~(slope * 60) + 128;
+          return ['rgba(', b, ',', b, ',', b, ',1)'].join('');
+        }
+		
+		// rotate view to diamond
+        function iso(x, y) {
+          return {
+            x: 0.5 * (self.size + x - y),
+            y: 0.5 * (x + y)
+          };
+        }
+		
+		// perspective: divide horizonal and vertical position by depth so that higher depths 
+		// render closer to the origin (ie, further away objects appear smaller)
+        function project(flatX, flatY, flatZ) {
+          var point = iso(flatX, flatY);
+          var x0 = width * 0.5;
+          var y0 = height * 0.2;
+          var z = self.size * 3 - flatZ + point.y * 1.75;
+          var x = (point.x - self.size * 0.5) * 12;
+          var y = (self.size - point.y) * 0.01 + 1;
+          return {
+            x: x0 + x / y,
+            y: y0 + z / y
+          };
+        }
+      };
+	  
+	  // create directions strokes ******************************************
+      Terrain.prototype.genstrokes = function() {
+		// set division hierarchy
+		var divh = 0;
+		var maxhie = 6; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
+		// note: therefore h = (ln(screen_size) - ln(interval lgth)) / ln2
+		
+		// stroke storage: 1-dim arrays, data set by hierarchy, i.e. [-data h=0- --data h=1-- ---...]
+		var nstrokesperh = 8; // so many strokes per hierarchy (4 in each direction)
+		var strkstrindex = []; // hierarchy levels for strokes
+		for (var i=0; i<=maxhie; i++) strkstrindex[i] = i;
+		
+		function nsdiv(h) { // returns numbers of subdivisions in one dimension (for seed points)
+			return h<0 ? 0 : Math.pow(2, h);
+		}
+		
+		function nsdivc(h) { // returns cumulative number of subdivisions in one dimension (for seed points)
+			return h<0 ? 0 : (Math.pow(2, h+1) - 1);
+		}
+		
+		function nsqurs(h) { // returns numbers of squares (for seed points)
+			return Math.pow(4, h);
+		}
+		
+		function nsqursc(h) { // returns cumulative number of squares for seed points
+			return h<0 ? 0 : (Math.pow(4, h+1) - 1) / 3;
+		}
+		
+		function nsqursstr(h) { // returns numbers of squares times strokes per square
+			return h<0 ? 0 : (nstrokesperh * nsqurs(h));
+		}
+		
+		function nsqursstrc(h) { // returns cumulative lengths for strokes: access array at current hierarchy
+			return h<0 ? 0 : (nstrokesperh * nsqursc(h));
+		}
+		
+		// y: l -------------
+		//     1|  x  |  x  |
+		//      -------------
+		//     0|  x  |  x  |
+		//      -------------
+		//         0     1  x: k
+		
+		// init data fields: 1-dim arrays, hierarchy 0, then 1 etc., lengths increase due to subdivisions
+		//var x = []; // stroke points
+		//var y = [];
+		var xs = []; // seed points
+		var ys = [];
+		
+		// create an access function that fetches all values for a given hierarchy
+		/*function gethierdata(myh) {
+			var loweri = (myh==0) ? 0 : strkstrlenc[myh-1];
+			var upperi = strkstrlenc[myh];
+			for(var i=loweri; i<upperi; i++) {
+				outstr1 += x[i] + " ";
+			}
+			return 0;
+		} */
+		
+		// corner indices for gradient patch
+		var sgndx = [0,1,0,-1];
+		var sgndy = [1,0,-1,0];
+		var deltalim = 10.0; // limit we accept as "same height"
+		var xn0 = 0, yn0 = 0;
+		var xn1 = 0, yn1 = 0;
+		var xl0 = 0, yl0 = 0;
+		var xl1 = 0, yl1 = 0;
+		var size = this.size;
+		var half = size;
+		var xswork = 0, yswork = 0;
+		//console.log('size ' + size + ' half ' + half);
+		
+		for (h=0; h<maxhie; h++) { // main hierarchy loop
+		
+			// starting at h=0 determine seed points, calculate strokes
+			var dh = [0.0, 0.0, 0.0, 0.0]; // height difference in 4 directions
+			// x = half -> size + half: next subdivision
+			// set all seed points for current hierarchy
+			var seedIndex = 0;
+			var distStep = half / nstrokesperh;
+			
+			for (var k=0; k<nsdiv(h); k++) { // loop over x-seedpoints: 2^(h+1) per hierarchy
+				
+				if (h==0) seedIndex = 0;
+				else if (h==1) seedIndex = 1;
+				else seedIndex = nsdivc(h-1);
+				xs[seedIndex + k] = half * k + half / 2;
+				xswork = xs[seedIndex + k];
+				//console.log('seedIndex ' + seedIndex + ' seed+k ' + (seedIndex + k) + ' nsdiv h ' + nsdiv(h));
+				
+				for (var l=0; l<nsdiv(h); l++) { // loop over y-seedpoints: 2^(h+1) per hierarchy
+					ys[seedIndex + k * nsdiv(h) + l] = half * l + half / 2;
+					yswork = ys[seedIndex + k * nsdiv(h) + l];
+					//console.log('xs ' + xs[seedIndex + k].toPrecision(2));
+					//console.log('ys ' + ys[seedIndex + k * nsdiv(h) + l].toPrecision(2));
+					//console.log('size ' + size + ' upper index ' + nsdiv(h) + ' h ' + h);
+					//console.log('**********seed k ' + k + ' l ' + l + ' xs ' + xswork + ' ys ' + yswork);
+					
+					// next stroke points directions 0 and 1, both starting at current seed point xs, ys
+					xn0 = xswork;
+					yn0 = yswork;
+					xn1 = xswork;
+					yn1 = yswork;
+					xl0 = xn0; // save previous-but-one points for stroke reversal check
+					yl0 = yn0;
+					xl1 = xn1;
+					yl1 = yn1;
+					
+					// for each seed point: while (!strokeend) xp += grad_x and xm -=grad_x (stroke in both directions simultaneously)
+					var strokeend = false;
+					var currheight = 0.0; // gradient calculation
+					var lastmax = 0.0;
+					var lastmin = 0.0;
+					var lastmaxi = 0;
+					var lastmini = 0;
+					var nstrokes = 0; // number of strokes drawn (per direction)
+					
+					while (!strokeend) {
+						if (nstrokes > nstrokesperh / 2) break; // all strokes per hierarchy filled (stop condition 0)
+						
+						// calculate gradient at xs, ys and find direction of steepest inc/dec
+						//  0
+						// 3 1
+						//  2
+						currheight = this.get(~~xswork, ~~yswork);
+						lastmax = -1000.0; // max height difference
+						lastmin = 1000.0; // min height difference
+						lastmaxi = -1;
+						lastmini = -1;
+						// need to check here: for higher hierarchies, do we need to take an average of larger areas instead of just points?
+						//console.log('xswork ' + xswork + ' yswork ' + yswork + ' half/2 ' + half/2 + ' cheight ' + currheight.toPrecision(2));
+						dh[3] = this.get(~~(xswork - half / 2), ~~yswork) - currheight;
+						dh[1] = this.get(~~(xswork + half / 2), ~~yswork) - currheight;
+						dh[0] = this.get(~~xswork, ~~(yswork + half / 2)) - currheight;
+						dh[2] = this.get(~~xswork, ~~(yswork - half / 2)) - currheight;
+						//console.log(' dh 0 ' + dh[0].toPrecision(2) + ' 1 ' + dh[1].toPrecision(2) + ' 2 ' + dh[2].toPrecision(2) + ' 3 ' + dh[3].toPrecision(2) + ' currhgth ' + currheight.toPrecision(2));
+						for (var i=0; i<4; i++) {
+							if (dh[i] > lastmax) {
+								lastmax = dh[i];
+								lastmaxi = i;
+								//console.log('max found: ' + i + ' dh ' + dh[i].toPrecision(2));
+							} else if (dh[i] < lastmin) {
+								lastmin = dh[i];
+								lastmini = i;
+								//console.log('min found: ' + i + ' dh ' + dh[i].toPrecision(2));
+							}
+						}
+						//console.log('lastmax ' + lastmax.toPrecision(2) + ' lastmaxi ' + lastmaxi + ' lastmin ' + lastmin.toPrecision(2) + ' lastmini ' + lastmini);
+						
+						// -------------------
+						// check stroke stops: 0 hierarchy filled, A local minimum/maximum, B ridges, C drawing limit (border), D higher-order stroke, E flat slope, F stroke reversals/no-step
+						// -------------------
+						// todo: reorder this: A, B, C...
+						
+						// follow both directions at the same time: directions 0 and 1 and F no-step
+						if (lastmaxi < 0) break;
+						if (lastmini < 0) break;
+						
+						// next stroke points by gradient
+						xn0 += sgndx[lastmaxi] * distStep;
+						yn0 += sgndy[lastmaxi] * distStep;
+						xn1 += sgndx[lastmini] * distStep;
+						yn1 += sgndy[lastmini] * distStep;
+						
+						//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);
+						
+						// F stroke reversals 
+						/*if (nstrokes > 0) {
+							var ldist0 = (xn0 - xl0) * (xn0 - xl0) + (yn0 - yl0) * (yn0 - yl0);
+							var ldist1 = (xn1 - xl1) * (xn1 - xl1) + (yn1 - yl1) * (yn1 - yl1);
+							ldist0 = Math.sqrt(ldist0);
+							ldist1 = Math.sqrt(ldist1);
+							if (ldist0 < distStep || ldist1 < distStep) {
+								strokeend = true;
+								break;
+							}
+							if (nstrokes % 2 == 0) { // only store next but one 
+								xl0 = xn0; // save previous-but-one points for stroke reversal check
+								yl0 = yn0; // todo: what if those points have not been set
+								xl1 = xn1;
+								yl1 = yn1;
+							}
+						} */
+						
+						// A local minimum/maximum
+						/*if (currheight > lastmax || currheight < lastmin) {
+							strokeend = true;
+							break;
+						}*/
+						
+						// E flat-slope condition
+						/*if (Math.abs(currheight - lastmax) < deltalim || Math.abs(currheight - lastmin) < deltalim) {
+							strokeend = true;
+							break;
+						}*/
+						
+						// B ridges
+						// ridge 0-2
+						/*if ((Math.abs(dh[0] - dh[2]) < deltalim) && (dh[1] < currheight) && (dh[3] < currheight)) {
+							strokeend = true;
+							break;
+						}
+						// ridge 1-3
+						if ((Math.abs(dh[1] - dh[3]) < deltalim) && (dh[0] < currheight) && (dh[2] < currheight)) {
+							strokeend = true;
+							break;
+						}*/
+						
+						// C drawing limits (borders)
+						/*if ((Math.abs(xn0 - xswork) > half) || (Math.abs(yn0 - yswork) > half)) {
+							strokeend = true;
+							break;
+						}
+						if ((Math.abs(xn1 - xswork) > half) || (Math.abs(yn1 - yswork) > half)) {
+							strokeend = true;
+							break;
+						}*/
+						// D higher-order strokes
+						// todo
+						// either check parent-squares (cumbersome) or just a stroke image file (buth then we need to render as we go...)
+						
+						// add next stroke points xn0, yn0 to storage
+						var locind0 = nsqursstrc(h) + (k * nsdiv(h) + l) * nstrokesperh - nstrokesperh / 2 + nstrokes;
+						var locind1 = nsqursstrc(h) + (k * nsdiv(h) + l) * nstrokesperh - nstrokesperh / 2 - nstrokes;							
+
+						this.x[locind0] = xn0; // for nstrokes = 0 assigned twice (n0 and n1): todo: fix
+						this.y[locind0] = yn0;
+						this.x[locind1] = xn1; 
+						this.y[locind1] = yn1;
+						//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);	
+						//console.log(' index 0: ' + locind0 + ' 1: ' + locind1);	
+						//console.log('k ' + k + ' l ' + l + ' x0 ' + ~~xn0 + ' y0 ' + ~~yn0);
+						
+						// store gradient for later lighting render (already computed)
+						this.p[locind0] = dh[1] / distStep; // lets see how this works, maybe dh[1] - dh[3] ... plus check distStep != 0...
+						this.q[locind0] = dh[0] / distStep;
+						// still a weakness here: still just one gradient, but following both stroke directions.... todo: check...
+						this.p[locind1] = this.p[locind0]; // for now the same: todo: fix
+						this.q[locind1] = this.q[locind0];
+						
+						nstrokes++;
+						
+					} // stroke loop
+				} // seed point loop y
+			} // seed point loop x
+			
+			half /= 2;
+			
+		} // mainh hierarchy loop
+		
+		// checks
+		//for ( var k=0; k<nsqursstrc(maxhie); k++) console.log('k ' + k + ' x ' + this.x[k]);
+		
+		// adjust for lighting by running through stroke hierarchy images
+		
+		
+	  };
+	  
+	  // render strokes ************************************************
+	  // later might merge this into the stroke creation loop - for now, just get it to work...
+      Terrain.prototype.drawStrokes = function(ctx, width, height) {
+		// set division hierarchy
+		var divh = 0;
+		var maxhie = 6; // maximum hierarchy (from minimum interval: screen_size / 2^(n+1) = meaningful interval length)
+		// note: therefore h = (ln(screen_size) - ln(interval lgth)) / ln2
+		
+		// stroke storage: 1-dim arrays, data set by hierarchy, i.e. [-data h=0- --data h=1-- ---...]
+		var nstrokesperh = 8; // so many strokes per hierarchy (4 in each direction)
+		var strkstrindex = []; // hierarchy levels for strokes
+		for (var i=0; i<=maxhie; i++) strkstrindex[i] = i;
+		
+		function nsqurs(h) { // returns numbers of squares (for seed points)
+			return Math.pow(4, h);
+		}
+		
+		function nsqursc(h) { // returns cumulative number of squares for seed points
+			return h<0 ? 0 : (Math.pow(4, h+1) - 1) / 3;
+		}
+		
+		function nsqursstr(h) { // returns numbers of squares times strokes per square
+			return h<0 ? 0 : (nstrokesperh * nsqurs(h));
+		}
+		
+		function nsqursstrc(h) { // returns cumulative lengths for strokes: access array at current hierarchy
+			return h<0 ? 0 : (nstrokesperh * nsqursc(h));
+		}
+		
+		var self = this;
+		var tsize = this.size;
+        //var waterVal = this.size * 0.3;
+		var lx = -10.0, ly = 8.0, lz = 12.0; // lighting vector
+		var ti = 0.0; // lighting threshold
+		
+		// nested loops that drew rectangles from the 'back' (y = 0) to the 'front' (y = this.size) of our map
+		for (h=0; h<=maxhie; h++) { // loop over hierarchy
+			
+			//console.log('h ' + h + ' nsqursstrks cum ' + nsqursstrc(h));
+			
+			for ( hind = nsqursstrc(h-1); hind < nsqursstrc(h); hind += nstrokesperh) {
+			
+				// draw a single stroke ////////////////////////////
+				var lowind = hind; // lower
+				var uppind = hind + nstrokesperh; // upper
+				//console.log('lower ' + lowind + ' upper ' + uppind);
+				
+				ctx.beginPath();
+				ctx.strokeStyle = "OrangeRed";
+				ctx.lineWidth = 5 - h; // adjust line width by stroke hierarchy
+				var strokeStarted = true;
+				
+				for (k = lowind; k<uppind; k++) { // loop over strokepoints
+				
+					//console.log(lowind + ' upper ' + uppind);
+					//console.log(this.x[k] + ' y ' + this.y[k]);
+
+					if ( typeof this.x[k] != 'undefined' && typeof this.y[k] != 'undefined') {
+					
+						var val = this.get(~~this.x[k], ~~this.y[k]); // get height at current stroke point
+						//console.log(val + ' y ' + this.y[k]);
+						var top = project(this.x[k], this.y[k], val);
+						//console.log(top.x + ' y ' + top.y);
+						
+						// lighting
+						var lightval = (-lx * this.p[k] - ly * this.q[k] + lz) / Math.sqrt(1.0 + this.p[k] * this.p[k] + this.q[k] * this.q[k]);
+						//console.log('lighting: ' + lightval);
+						if (lightval < ti) ctx.lineWidth = 5 - h;
+						else break; //ctx.lineWidth = 3 - h;
+
+						if (strokeStarted) {
+							ctx.moveTo(top.x, top.y);
+							strokeStarted = false;
+						}
+						
+						ctx.lineTo(top.x, top.y);
+					}
+				}
+				ctx.stroke();
+				// end drawing a single stroke //////////////////////
+			}
+				
+		}
+		
+		// set point brightness
+        function brightness(x, y, slope) {
+          if (y === self.max || x === self.max) return '#000';
+		  // compare our current height value against the next point's height value to find a slope
+		  // draw brighter rectangles for higher slopes to fill one side with light and the other with shadow
+		  // ~~ is double NOT bitwise operator, faster for Math.floor()
+          var b = ~~(slope * 60) + 128;
+          return ['rgba(', b, ',', b, ',', b, ',1)'].join('');
+        }
+		
+		// rotate view to diamond
+        function iso(x, y) {
+          return {
+            x: 0.5 * (self.size + x - y),
+            y: 0.5 * (x + y)
+          };
+        }
+		
+		// perspective: divide horizonal and vertical position by depth so that higher depths 
+		// render closer to the origin (ie, further away objects appear smaller)
+        function project(flatX, flatY, flatZ) {
+          var point = iso(flatX, flatY);
+          var x0 = width * 0.5;
+          var y0 = height * 0.2;
+          var z = self.size * 3 - flatZ + point.y * 1.75;
+          var x = (point.x - self.size * 0.5) * 12;
+          var y = (self.size - point.y) * 0.01 + 1;
+          return {
+            x: x0 + x / y,
+            y: y0 + z / y
+          };
+        }
+      };
+	  
+      var display = document.getElementById('display');
+	  // getContext() method returns an object that provides methods and properties for drawing on the canvas
+      var ctx = display.getContext('2d');
+      var width = display.width = window.innerWidth;
+      var height = display.height = window.innerHeight;
+	  
+	// putting it all together
+      var terrain = new Terrain(7); // details in powers of 2
+	  //terrain.generate_test(); // test terrain to adjust erosion parameters
+      terrain.generate(1.5);
+	  terrain.erode(100); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
+      terrain.draw(ctx, width, height); // comment this out to show only stroke draws
+	  terrain.genstrokes();
+	  terrain.drawStrokes(ctx, width, height);
+    </script>
+  </body>
+</html>
