@@ -525,15 +525,15 @@
 						// either check parent-squares (cumbersome) or just a stroke image file (buth then we need to render as we go...)
 						
 						// add next stroke points xn0, yn0 to storage
-						var locind0 = nsqursstrc(h) + l * nstrokesperh + k * nstrokesperh - nstrokesperh / 2 + nstrokes;
-						var locind1 = nsqursstrc(h) + l * nstrokesperh + k * nstrokesperh - nstrokesperh / 2 - nstrokes;							
+						var locind0 = nsqursstrc(h) + (k * nsdiv(h) + l) * nstrokesperh - nstrokesperh / 2 + nstrokes;
+						var locind1 = nsqursstrc(h) + (k * nsdiv(h) + l) * nstrokesperh - nstrokesperh / 2 - nstrokes;							
 
 						this.x[locind0] = xn0; // for nstrokes = 0 assigned twice (n0 and n1): todo: fix
 						this.y[locind0] = yn0;
 						this.x[locind1] = xn1; 
 						this.y[locind1] = yn1;
 						//console.log('h ' + h + ' nstrokes ' + nstrokes + ' x0 ' + xn0 + ' y0 ' + yn0 + ' x1 ' + xn1 + ' y1 ' + yn1);	
-						//console.log(' index ' + locind0);	
+						//console.log(' index 0: ' + locind0 + ' 1: ' + locind1);	
 						//console.log('k ' + k + ' l ' + l + ' x0 ' + ~~xn0 + ' y0 ' + ~~yn0);
 						
 						nstrokes++;
@@ -674,7 +674,7 @@
 	  //terrain.generate_test(); // test terrain to adjust erosion parameters
       terrain.generate(1.5);
 	  terrain.erode(100); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points)
-      terrain.draw(ctx, width, height);
+      //terrain.draw(ctx, width, height);
 	  terrain.genstrokes();
 	  terrain.drawStrokes(ctx, width, height);
     </script>
