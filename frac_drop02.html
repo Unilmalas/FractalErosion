@@ -622,33 +622,58 @@
 				
 				ctx.beginPath();
 				ctx.strokeStyle = "DarkSlateGray";
-				ctx.lineWidth = 5 - h; // adjust line width by stroke hierarchy
+				ctx.lineWidth = 4 - h; // adjust line width by stroke hierarchy
 				var strokeStarted = true;
+				var kmin = 0; // used to strock last Bezier point to properly switch from Bezier to regular rendering
 				
-				for (k = lowind; k<uppind; k++) { // loop over strokepoints
+				for (k = lowind; k < uppind; k++) { // loop over strokepoints
 				
 					//console.log(lowind + ' upper ' + uppind);
 					//console.log(this.x[k] + ' y ' + this.y[k]);
 
 					if ( typeof this.x[k] != 'undefined' && typeof this.y[k] != 'undefined') {
-					
-						var val = this.get(~~this.x[k], ~~this.y[k]); // get height at current stroke point
-						//console.log(val + ' y ' + this.y[k]);
-						var top = project(this.x[k], this.y[k], val);
-						//console.log(top.x + ' y ' + top.y);
 						
 						// lighting
 						var lightval = (-lx * this.p[k] - ly * this.q[k] + lz) / Math.sqrt(1.0 + this.p[k] * this.p[k] + this.q[k] * this.q[k]);
 						//console.log('lighting: ' + lightval);
 						if (lightval < ti) ctx.strokeStyle = "Yellow"; //ctx.lineWidth = 5 - h;
 						else ctx.strokeStyle = "DarkSlateGray"; //break; //ctx.lineWidth = 3 - h;
-
-						if (strokeStarted) {
-							ctx.moveTo(top.x, top.y);
-							strokeStarted = false;
-						}
 						
-						ctx.lineTo(top.x, top.y);
+						// try Bezier-interpolation for higher hierarchies and if sufficient data is given
+						if (k > (lowind+1) && k < (uppind-1) &&
+							typeof this.x[k-1] != 'undefined' &&
+							typeof this.x[k+1] != 'undefined' &&
+							h < ~~(maxhie/2) && // only for upper hierarchy strokes (lenght has to to be sufficient)
+							k > kmin) {						
+						
+							var p0 = {x: this.x[k-1], y: this.y[k-1]};
+							var p1 = {x: this.x[k], y: this.y[k]};
+							var p2 = {x: this.x[k+1], y: this.y[k+1]};
+							var cpoint = {x: 0, y: 0};
+							
+							for(var t=0; t<=1;t+=0.1) {
+								cpoint.x = (1-t)*(1-t)*p0.x + 2*(1-t)*t*p1.x + t*t*p2.x;
+								cpoint.y = (1-t)*(1-t)*p0.y + 2*(1-t)*t*p1.y + t*t*p2.y;
+								var val = this.get(~~cpoint.x, ~~cpoint.y); // get height at current stroke point
+								var top = project(~~cpoint.x, ~~cpoint.y, val);
+								if (strokeStarted) {
+									ctx.moveTo(top.x, top.y);
+									strokeStarted = false;
+								}
+								ctx.lineTo(top.x, top.y);
+								kmin = k+1;
+							}
+						} else { 
+							var val = this.get(~~this.x[k], ~~this.y[k]); // get height at current stroke point
+							//console.log(val + ' y ' + this.y[k]);
+							var top = project(this.x[k], this.y[k], val);
+							//console.log(top.x + ' y ' + top.y);
+							if (strokeStarted) {
+								ctx.moveTo(top.x, top.y);
+								strokeStarted = false;
+							}
+							ctx.lineTo(top.x, top.y);
+						}
 					}
 				}
 				ctx.stroke();
