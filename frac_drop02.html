@@ -414,6 +414,10 @@
 					//console.log('**********seed k ' + k + ' l ' + l + ' xs ' + xswork + ' ys ' + yswork);
 					
 					// next stroke points directions 0 and 1, both starting at current seed point xs, ys
+					//	1		seed		0
+					//  x<--------x-------->x
+					// xn1     xswork      xn0
+					// yn1     yswork      yn0
 					xn0 = xswork;
 					yn0 = yswork;
 					xn1 = xswork;
@@ -439,30 +443,36 @@
 						//  0
 						// 3 1
 						//  2
-						currheight = this.get(~~xswork, ~~yswork);
+						// first direction 0: steepest ascend
+						currheight = this.get(~~xn0, ~~yn0);
 						lastmax = -1000.0; // max height difference
-						lastmin = 1000.0; // min height difference
 						lastmaxi = -1;
-						lastmini = -1;
 						// need to check here: for higher hierarchies, do we need to take an average of larger areas instead of just points?
-						//console.log('xswork ' + xswork + ' yswork ' + yswork + ' half/2 ' + half/2 + ' cheight ' + currheight.toPrecision(2));
-						dh[3] = this.get(~~(xswork - half / 2), ~~yswork) - currheight;
-						dh[1] = this.get(~~(xswork + half / 2), ~~yswork) - currheight;
-						dh[0] = this.get(~~xswork, ~~(yswork + half / 2)) - currheight;
-						dh[2] = this.get(~~xswork, ~~(yswork - half / 2)) - currheight;
-						//console.log(' dh 0 ' + dh[0].toPrecision(2) + ' 1 ' + dh[1].toPrecision(2) + ' 2 ' + dh[2].toPrecision(2) + ' 3 ' + dh[3].toPrecision(2) + ' currhgth ' + currheight.toPrecision(2));
+						dh[3] = this.get(~~(xn0 - half / 2), ~~yn0) - currheight;
+						dh[1] = this.get(~~(xn0 + half / 2), ~~yn0) - currheight;
+						dh[0] = this.get(~~xn0, ~~(yn0 + half / 2)) - currheight;
+						dh[2] = this.get(~~xn0, ~~(yn0 - half / 2)) - currheight;
 						for (var i=0; i<4; i++) {
 							if (dh[i] > lastmax) {
 								lastmax = dh[i];
 								lastmaxi = i;
-								//console.log('max found: ' + i + ' dh ' + dh[i].toPrecision(2));
-							} else if (dh[i] < lastmin) {
-								lastmin = dh[i];
-								lastmini = i;
-								//console.log('min found: ' + i + ' dh ' + dh[i].toPrecision(2));
 							}
 						}
-						//console.log('lastmax ' + lastmax.toPrecision(2) + ' lastmaxi ' + lastmaxi + ' lastmin ' + lastmin.toPrecision(2) + ' lastmini ' + lastmini);
+						// then direction 1: steepest descend
+						currheight = this.get(~~xn1, ~~yn1);
+						lastmin = 1000.0; // min height difference
+						lastmini = -1;
+						// need to check here: for higher hierarchies, do we need to take an average of larger areas instead of just points?
+						dh[3] = this.get(~~(xn1 - half / 2), ~~yn1) - currheight;
+						dh[1] = this.get(~~(xn1 + half / 2), ~~yn1) - currheight;
+						dh[0] = this.get(~~xn1, ~~(yn1 + half / 2)) - currheight;
+						dh[2] = this.get(~~xn1, ~~(yn1 - half / 2)) - currheight;
+						for (var i=0; i<4; i++) {
+							if (dh[i] < lastmin) {
+								lastmin = dh[i];
+								lastmini = i;
+							}
+						}
 						
 						// -------------------
 						// check stroke stops: 0 hierarchy filled, A local minimum/maximum, B ridges, C drawing limit (border), D higher-order stroke, E flat slope, F stroke reversals/no-step
@@ -470,10 +480,11 @@
 						// todo: reorder this: A, B, C...
 						
 						// follow both directions at the same time: directions 0 and 1 and F no-step
+						// todo: we do not need to stop both directions, at least try one then
 						if (lastmaxi < 0) break;
 						if (lastmini < 0) break;
 						
-						// next stroke points by gradient
+						// next stroke points by gradient (use sign array for direction)
 						xn0 += sgndx[lastmaxi] * distStep;
 						yn0 += sgndy[lastmaxi] * distStep;
 						xn1 += sgndx[lastmini] * distStep;
@@ -622,7 +633,7 @@
 				
 				ctx.beginPath();
 				ctx.strokeStyle = "DarkSlateGray";
-				ctx.lineWidth = 4 - h; // adjust line width by stroke hierarchy
+				ctx.lineWidth = 3 - h; // adjust line width by stroke hierarchy
 				var strokeStarted = true;
 				var kmin = 0; // used to strock last Bezier point to properly switch from Bezier to regular rendering
 				
