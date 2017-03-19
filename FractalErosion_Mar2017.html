@@ -146,7 +146,7 @@
 			}
 		};
 		
-	  // *************** Erosion ***************************************
+	  // *************** Droplet Erosion ***************************************
 	  Terrain.prototype.erode = function(ndrops) {
 		// adapted from http://ranmantaru.com/blog/2011/10/08/water-erosion-on-heightmap-terrain/
 		// number of drops falling and eroding along gradient path
@@ -278,6 +278,7 @@
 		this.set(x, y+2, this.get(x, y+1) + mass32);
 	}
 	  
+	  // ************* Droplet Erosion new Version ********************************
 	  Terrain.prototype.erode2 = function(ndrops) {
 		// simple droplet erosion model: drops impig soil, solve out a portion, soil droplest slides down gradient and deposits material
 		var steplim = 30; // adjust this if necessary, 30 yields good results
@@ -357,6 +358,9 @@
 			var sgndy = [-1,-1,1,1];
 			var firststep = true;
 			
+			//var avrgdeltab = 0;
+			//var avrgdmass = 0;
+			
 			// main erosion loop for one droplet path
 			var gradx=0;
 			var grady=0;			
@@ -434,6 +438,11 @@
 					dmass = deltab * twoPI * rccone;
 					// todo: some things to check here: is the cone broadening along the way? how about sliding and eroding, not just depositing?
 				}
+				
+				// update averages to check figures
+				//avrgdeltab += deltab / steplim;
+				//avrgdmass += dmass / steplim;
+				
 				//u0 = Math.min(u0 * Ki * Math.random(), Math.sqrt(Math.abs(u0 * u0 + Kg * dh))); // high speeds v seem to be a problem...
 				//console.log('sina ' + sina.toPrecision(2) + ' dviscsoil ' + dviscsoil.toPrecision(2) + ' gaccel ' + gaccel.toPrecision(2));
 				u0 = ( gaccel * sina - dviscsoil * u0 / slipm / deltab ); // times dt, but assume dt=1
@@ -453,6 +462,7 @@
 				steps++;
 				
 			} while (steps < steplim);
+			//console.log('average deltab: ' + avrgdeltab.toPrecision(2) + ' average dmass: ' + avrgdmass.toPrecision(2) + ' ratio: ' + (avrgdmass / avrgdeltab).toPrecision(2)); // this is ok: the ration comes out between 5 and 6 at the current setting
 		}
 	  };
 	
