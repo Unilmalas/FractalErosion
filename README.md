@@ -1,10 +1,11 @@
 # FractalErosion
 Fractal terrain generation and and droplet erosion
 
-a horrible spaghetti-code to test
 - fractal terrain generation (used Hunter Loftis code: http://www.playfuljs.com/realistic-terrain-in-130-lines/)
 - use a hydraulic erosion model to make terrain look more realistic (based on the model by Mei/Decaudin/Hu and Jako/Proceedings of CESCG 2011) -> changed this to simpler and much faster droplet erosion model, seems to work
+- added two versions of a droplet erosion model: the iterative version much faster with good results
+- terrain visualization via direction of slope and lightning (Buchin et al.)
 
 next steps:
-- clean up this mess
-- terrain visualization via direction of slope and lightning (Buchin et al.): working; some details to clean up: stroke rendering pencil-like (Salsbury et al.)
+- clean up this mess (stell have not gotten to it)
+- stroke rendering pencil-like (Salsbury et al.)
