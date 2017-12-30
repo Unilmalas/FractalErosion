@@ -582,8 +582,9 @@
 					break;					
 			}
 			
-			let erodePort = Math.max( 1 - ndrops / dgrid / dgrid, 1.0); // depends on the rain densitiy: more erosion on smaller squares
-			let depPort = 2 - erodePort;
+			let erodePort = Math.max( 1 - ndrops / dgrid / dgrid, 0.5); // depends on the rain densitiy: more erosion on smaller squares
+			//console.log('erode portion: ' + erodePort);
+			let depPort = 1.0 - erodePort; // max one hight unit to be moved
 			let h = 0;
 			
 			let xlim = ~~(xh0+dgrid);
@@ -594,7 +595,6 @@
 				for (let iy=yh0; iy<ylim; iy++) {
 					if ( ix < this.max && iy < this.max ) { // to prevent memory issues at grid borders, a bit quick and dirty
 						h = this.get( ix, iy );
-						//console.log("get: x " + ix + " y " + iy + " h " + h.toPrecision(2));
 						this.set( ix, iy, h + erodePort );
 					}
 				}
@@ -631,20 +631,15 @@
 			let x0 = 1;
 			let y0 = 1;
 			
-			//console.log("size: " + this.size + " dgrid: " + dgrid);
-			//console.log("nsplits: " + nsplits);
 			// 1 run over all 2x2 patches
 			for (let ipatch = 0; ipatch < npatches; ipatch++) { // patch loop: run over all 2x2-patches at current iteration
 				x0 = parseInt(( ipatch % nsplits ) * dgrid );
 				y0 = parseInt(Math.floor( ipatch / nsplits ) * dgrid );
-				//console.log(" at x: " + x0 + " y: " + y0 );
 				// 2 highest and lowest in each patch
 				ind = this.findHiLo( ~~x0, ~~y0, ~~dgrid );		
 				// 3 let rain fall on highest and erode to lowest
-				//console.log("rain " + x0 + " , " + y0 + " hi " + indhi + " lo " + indlo);
-				// do we need to reduce number of raindrops per iteration? keep rain/area const
-				this.rainAndErode( ~~x0, ~~y0, ind[0], ind[1], ndrops, dgrid ); 
-				//console.log("patch processing " + x0 + " , " + y0);
+				// do we need to reduce number of raindrops per iteration? keep rain/area const - added a proportianality 1/d^2
+				this.rainAndErode( ~~x0, ~~y0, ind[0], ind[1], ndrops / (dgrid * dgrid + 1), dgrid ); 
 			}
 			nstep++;
 		} while ( nstep < steplim );
@@ -1126,7 +1121,7 @@
 	  //terrain.generate_test(); // test terrain to adjust erosion parameters
 	  //terrain.generate_test2(); // test terrain to adjust erosion parameters
       terrain.generate(1.1); // enable this to generate a "realistic" terrain - this has to be set higher with erosion as erosion reduces the "fractality"
-	  terrain.erode3(100000, 7); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points), steplim: grid splits
+	  terrain.erode3(150000, 7); // erode territory (number of drops) (for detail 7: 128x128=about 16.000 points), steplim: grid splits
       //terrain.draw(ctx, width, height); // comment this out to show only stroke draws
 	  terrain.genstrokes(); // enable both of these to draw strokes
 	  terrain.drawStrokes(ctx, width, height);
