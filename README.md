@@ -8,4 +8,4 @@ Fractal terrain generation and and droplet erosion
 
 next steps:
 - clean up this mess (still have not gotten to it)
-- stroke rendering pencil-like (Salsbury et al.)
+- further improve stroke rendering pencil-like (Salsbury et al.) (furry-strokes for now)
