@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Terrain Demo</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="display"></canvas>
+
+    <script>
+        'use strict';
+
+        // Terrain generation based on http://www.playfuljs.com/realistic-terrain-in-130-lines/
+        
+        // Fast inverse square root (Quake III Arena algorithm)
+        const bytes = new ArrayBuffer(Float32Array.BYTES_PER_ELEMENT);
+        const floatView = new Float32Array(bytes);
+        const intView = new Uint32Array(bytes);
+        const THREE_HALVES = 1.5;
+
+        function fastInvSqrt(number) {
+            const x2 = number * 0.5;
+            floatView[0] = number;
+            intView[0] = 0x5f3759df - (intView[0] >> 1);
+            let y = floatView[0];
+            y = y * (THREE_HALVES - (x2 * y * y));
+            return y;
+        }
+
+        class Terrain {
+            constructor(detail) {
+                this.size = Math.pow(2, detail) + 1;
+                this.max = this.size - 1;
+                this.map = new Float32Array(this.size * this.size);
+                // Stroke points and gradients for lighting
+                this.strokeX = [];
+                this.strokeY = [];
+                this.gradX = [];
+                this.gradY = [];
+            }
+
+            get(x, y) {
+                x = Math.max(0, Math.min(x, this.max));
+                y = Math.max(0, Math.min(y, this.max));
+                return this.map[x + this.size * y];
+            }
+
+            set(x, y, val) {
+                this.map[x + this.size * y] = val;
+            }
+
+            generate(roughness) {
+                // Set seed corners
+                for (let x = 0; x < this.max; x++) {
+                    this.set(x, 0, this.max / 2);
+                }
+                this.set(this.max, this.max, 0);
+                this.set(0, this.max, this.max / 2);
+
+                const divide = (size) => {
+                    const half = size / 2;
+                    const scale = roughness * size;
+                    
+                    if (half < 1) return;
+
+                    // Square phase
+                    for (let y = half; y < this.max; y += size) {
+                        for (let x = half; x < this.max; x += size) {
+                            this.square(x, y, half, Math.random() * scale * 2 - scale);
+                        }
+                    }
+
+                    // Diamond phase
+                    for (let y = 0; y <= this.max; y += half) {
+                        for (let x = (y + half) % size; x <= this.max; x += size) {
+                            this.diamond(x, y, half, Math.random() * scale * 2 - scale);
+                        }
+                    }
+
+                    divide(size / 2);
+                };
+
+                divide(this.max);
+            }
+
+            square(x, y, size, offset) {
+                const avg = this.average([
+                    this.get(x - size, y - size),
+                    this.get(x + size, y - size),
+                    this.get(x + size, y + size),
+                    this.get(x - size, y + size)
+                ]);
+                this.set(x, y, avg + offset);
+            }
+
+            diamond(x, y, size, offset) {
+                const avg = this.average([
+                    this.get(x, y - size),
+                    this.get(x + size, y),
+                    this.get(x, y + size),
+                    this.get(x - size, y)
+                ]);
+                this.set(x, y, avg + offset);
+            }
+
+            average(values) {
+                const valid = values.filter(v => v !== -1);
+                const sum = valid.reduce((a, b) => a + b, 0);
+                return valid.length ? sum / valid.length : 0;
+            }
+
+            // Test terrain: simple center plateau
+            generateTest() {
+                const third = Math.floor(this.max / 3);
+                const twoThirds = 2 * third;
+
+                for (let y = 0; y <= this.max; y++) {
+                    for (let x = 0; x <= this.max; x++) {
+                        let h = 0;
+                        if (x > third && x < twoThirds && y > third && y < twoThirds) {
+                            h = (x - y) + third;
+                        }
+                        this.set(x, y, h);
+                    }
+                }
+            }
+
+            // Test terrain: plateau with inclined valley
+            generateTest2() {
+                const third = Math.floor(this.max / 3);
+                const twoThirds = 2 * third;
+
+                for (let y = 0; y <= this.max; y++) {
+                    for (let x = 0; x <= this.max; x++) {
+                        let h = 0;
+                        if (x > third && x < twoThirds && y > third && y < twoThirds) {
+                            const valleyCenter = 1.5 * third - x / 8;
+                            if (y > valleyCenter - x / 8 && y < valleyCenter + x / 8) {
+                                h = 5 * third - 2 * x;
+                            } else {
+                                h = 4 * third;
+                            }
+                        }
+                        this.set(x, y, h);
+                    }
+                }
+            }
+
+            // Erosion: split terrain into patches, erode high areas to low areas
+            erode(numDrops, stepLimit) {
+                let gridSize = Math.floor((this.size - 2) / 2);
+                let numSplits = 2;
+                let numPatches = 1;
+                let step = 0;
+
+                do {
+                    gridSize = Math.floor(gridSize / 2);
+                    numSplits *= 2;
+                    numPatches *= 4;
+
+                    for (let patch = 0; patch < numPatches; patch++) {
+                        const x0 = Math.floor((patch % numSplits) * gridSize);
+                        const y0 = Math.floor(Math.floor(patch / numSplits) * gridSize);
+                        
+                        const [highIdx, lowIdx] = this.findHighLow(x0, y0, gridSize);
+                        const drops = numDrops / (gridSize * gridSize + 1);
+                        this.rainAndErode(x0, y0, highIdx, lowIdx, drops, gridSize);
+                    }
+                    step++;
+                } while (step < stepLimit);
+            }
+
+            findHighLow(x0, y0, gridSize) {
+                const half = Math.floor(gridSize / 2);
+                
+                // Sample heights at patch corners and center
+                const h0 = this.get(x0, y0);
+                const h01 = this.get(x0 + gridSize, y0);
+                const h1 = this.get(x0 + 2 * gridSize, y0);
+                const h12 = this.get(x0 + 2 * gridSize, y0 + gridSize);
+                const h2 = this.get(x0 + 2 * gridSize, y0 + 2 * gridSize);
+                const h23 = this.get(x0 + gridSize, y0 + 2 * gridSize);
+                const h3 = this.get(x0, y0 + 2 * gridSize);
+                const h30 = this.get(x0, y0 + gridSize);
+                const h00 = this.get(x0 + half, y0 + half);
+                const h11 = this.get(x0 + gridSize + half, y0 + half);
+                const h22 = this.get(x0 + gridSize + half, y0 + gridSize + half);
+                const h33 = this.get(x0 + half, y0 + gridSize + half);
+                const h0123 = this.get(x0 + gridSize, y0 + gridSize);
+
+                // Calculate averages for 4 sub-patches
+                const patches = [
+                    { avg: (h0 + h01 + h0123 + h30 + h00) / 5, idx: 0 },
+                    { avg: (h01 + h1 + h0123 + h12 + h11) / 5, idx: 1 },
+                    { avg: (h12 + h2 + h0123 + h23 + h22) / 5, idx: 2 },
+                    { avg: (h30 + h23 + h0123 + h3 + h33) / 5, idx: 3 }
+                ];
+
+                patches.sort((a, b) => b.avg - a.avg);
+                return [patches[0].idx, patches[3].idx];
+            }
+
+            rainAndErode(x0, y0, highIdx, lowIdx, numDrops, gridSize) {
+                const getCoords = (idx) => {
+                    switch (idx) {
+                        case 0: return [x0, y0];
+                        case 1: return [x0 + gridSize, y0];
+                        case 2: return [x0 + gridSize, y0 + gridSize];
+                        case 3: return [x0, y0 + gridSize];
+                    }
+                };
+
+                const [xh, yh] = getCoords(highIdx);
+                const [xl, yl] = getCoords(lowIdx);
+                
+                const erodePortion = Math.max(1 - numDrops / gridSize / gridSize, 0.5);
+                const depositPortion = 1.0 - erodePortion;
+
+                // Erode from high area
+                for (let ix = xh; ix < xh + gridSize; ix++) {
+                    for (let iy = yh; iy < yh + gridSize; iy++) {
+                        if (ix < this.max && iy < this.max) {
+                            this.set(ix, iy, this.get(ix, iy) + erodePortion);
+                        }
+                    }
+                }
+
+                // Deposit to low area
+                for (let ix = xl; ix < xl + gridSize; ix++) {
+                    for (let iy = yl; iy < yl + gridSize; iy++) {
+                        if (ix < this.max && iy < this.max) {
+                            this.set(ix, iy, this.get(ix, iy) - depositPortion);
+                        }
+                    }
+                }
+            }
+
+            // Generate direction strokes for artistic rendering
+            generateStrokes() {
+                const maxHierarchy = 7;
+                const strokesPerHierarchy = 8;
+                
+                const numSubdivisions = (h) => h < 0 ? 0 : Math.pow(2, h);
+                const cumSubdivisions = (h) => h < 0 ? 0 : (Math.pow(2, h + 1) - 1);
+                const numSquares = (h) => Math.pow(4, h);
+                const cumSquares = (h) => h < 0 ? 0 : (Math.pow(4, h + 1) - 1) / 3;
+                const cumStrokes = (h) => h < 0 ? 0 : (strokesPerHierarchy * cumSquares(h));
+
+                const signX = [0, 1, 0, -1];
+                const signY = [1, 0, -1, 0];
+                
+                let half = this.size;
+
+                for (let h = 0; h < maxHierarchy; h++) {
+                    const distStep = half / strokesPerHierarchy;
+                    const subdivs = numSubdivisions(h);
+                    
+                    for (let k = 0; k < subdivs; k++) {
+                        const seedX = half * k + half / 2;
+                        
+                        for (let l = 0; l < subdivs; l++) {
+                            const seedY = half * l + half / 2;
+                            
+                            let xPos = seedX, yPos = seedY;
+                            let xNeg = seedX, yNeg = seedY;
+                            
+                            for (let stroke = 0; stroke < strokesPerHierarchy / 2; stroke++) {
+                                const dh = [0, 0, 0, 0];
+                                
+                                // Calculate gradient for positive direction
+                                let currH = this.get(~~xPos, ~~yPos);
+                                for (let i = 0; i < 4; i++) {
+                                    const nx = ~~(xPos + signX[i] * half / 2);
+                                    const ny = ~~(yPos + signY[i] * half / 2);
+                                    dh[i] = this.get(nx, ny) - currH;
+                                }
+                                const maxDir = dh.indexOf(Math.max(...dh));
+                                
+                                // Calculate gradient for negative direction
+                                currH = this.get(~~xNeg, ~~yNeg);
+                                for (let i = 0; i < 4; i++) {
+                                    const nx = ~~(xNeg + signX[i] * half / 2);
+                                    const ny = ~~(yNeg + signY[i] * half / 2);
+                                    dh[i] = this.get(nx, ny) - currH;
+                                }
+                                const minDir = dh.indexOf(Math.min(...dh));
+                                
+                                // Update positions
+                                xPos += signX[maxDir] * distStep;
+                                yPos += signY[maxDir] * distStep;
+                                xNeg += signX[minDir] * distStep;
+                                yNeg += signY[minDir] * distStep;
+                                
+                                // Store stroke points
+                                const baseIdx = cumStrokes(h) + (k * subdivs + l) * strokesPerHierarchy;
+                                const posIdx = baseIdx - strokesPerHierarchy / 2 + stroke;
+                                const negIdx = baseIdx - strokesPerHierarchy / 2 - stroke;
+                                
+                                this.strokeX[posIdx] = xPos;
+                                this.strokeY[posIdx] = yPos;
+                                this.strokeX[negIdx] = xNeg;
+                                this.strokeY[negIdx] = yNeg;
+                                
+                                // Store gradients
+                                this.gradX[posIdx] = dh[1] / distStep;
+                                this.gradY[posIdx] = dh[0] / distStep;
+                                this.gradX[negIdx] = this.gradX[posIdx];
+                                this.gradY[negIdx] = this.gradY[posIdx];
+                            }
+                        }
+                    }
+                    half /= 2;
+                }
+            }
+
+            drawStrokes(ctx, width, height) {
+                const maxHierarchy = 7;
+                const strokesPerHierarchy = 8;
+                
+                const numSquares = (h) => Math.pow(4, h);
+                const cumSquares = (h) => h < 0 ? 0 : (Math.pow(4, h + 1) - 1) / 3;
+                const cumStrokes = (h) => h < 0 ? 0 : (strokesPerHierarchy * cumSquares(h));
+
+                const lightX = -10, lightY = 8, lightZ = 12;
+                const lightThreshold = 0;
+                const distanceLimit = 800;
+                const distanceCorr = 0.75;
+
+                const iso = (x, y) => ({
+                    x: 0.5 * (this.size + x - y),
+                    y: 0.5 * (x + y)
+                });
+
+                const project = (flatX, flatY, flatZ) => {
+                    const point = iso(flatX, flatY);
+                    const x0 = width * 0.5;
+                    const y0 = height * 0.2;
+                    const z = this.size * 3 - flatZ + point.y * 1.75;
+                    const x = (point.x - this.size * 0.5) * 12;
+                    const y = (this.size - point.y) * 0.01 + 1;
+                    return {
+                        x: x0 + x / y,
+                        y: y0 + z / y
+                    };
+                };
+
+                for (let h = 1; h <= maxHierarchy; h++) {
+                    const startIdx = cumStrokes(h - 1);
+                    const endIdx = cumStrokes(h);
+                    
+                    for (let idx = startIdx; idx < endIdx; idx += strokesPerHierarchy) {
+                        const lastIdx = idx + strokesPerHierarchy - 1;
+                        
+                        for (let k = idx; k < idx + strokesPerHierarchy; k++) {
+                            if (this.strokeX[k] === undefined) continue;
+                            
+                            // Calculate lighting
+                            const gx = this.gradX[k], gy = this.gradY[k];
+                            const lightVal = (-lightX * gx - lightY * gy + lightZ) * 
+                                           fastInvSqrt(1 + gx * gx + gy * gy);
+                            
+                            if (lightVal < lightThreshold) {
+                                ctx.strokeStyle = 'orange';
+                                ctx.globalAlpha = 0.3;
+                            } else {
+                                ctx.strokeStyle = 'DarkSlateGray';
+                                ctx.globalAlpha = 0.3;
+                            }
+                            
+                            const val = this.get(~~this.strokeX[k], ~~this.strokeY[k]);
+                            const pos = project(this.strokeX[k], this.strokeY[k], val);
+                            
+                            const lastVal = this.get(~~this.strokeX[lastIdx], ~~this.strokeY[lastIdx]);
+                            const lastPos = project(this.strokeX[lastIdx], this.strokeY[lastIdx], lastVal);
+                            
+                            const dx = pos.x - lastPos.x;
+                            const dy = pos.y - lastPos.y;
+                            const distSq = dx * dx + dy * dy;
+                            
+                            if (distSq < distanceLimit && Math.random() > distSq / distanceLimit) {
+                                ctx.beginPath();
+                                ctx.moveTo(lastPos.x + dx * distanceCorr, lastPos.y + dy * distanceCorr);
+                                ctx.lineTo(lastPos.x - dx * distanceCorr, lastPos.y - dy * distanceCorr);
+                                ctx.stroke();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Initialize
+        const canvas = document.getElementById('display');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const terrain = new Terrain(7);
+        terrain.generate(1.5);
+        terrain.erode(180000, 7);
+        terrain.generateStrokes();
+        terrain.drawStrokes(ctx, canvas.width, canvas.height);
+    </script>
+</body>
+</html>
