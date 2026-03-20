@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fixed Procedural Terrain</title>
+    <style>
+        body { margin: 0; background: #050505; overflow: hidden; color: #eee; font-family: monospace; }
+        canvas { display: block; }
+        .ui { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 10px; border: 1px solid #444; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        GENERATING: DIAMOND-SQUARE + HYDRAULIC EROSION<br>
+        STATUS: <span id="status">Processing...</span>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+
+        class Terrain {
+            constructor(detail) {
+                this.size = Math.pow(2, detail) + 1;
+                this.max = this.size - 1;
+                this.map = new Float32Array(this.size * this.size);
+            }
+
+            get(x, y) {
+                if (x < 0 || x > this.max || y < 0 || y > this.max) return -1;
+                return this.map[x + this.size * y];
+            }
+
+            set(x, y, val) {
+                this.map[x + this.size * y] = val;
+            }
+
+            generate(roughness) {
+                // Initialize corners
+                this.set(0, 0, this.max / 2);
+                this.set(this.max, 0, this.max / 2);
+                this.set(0, this.max, this.max / 2);
+                this.set(this.max, this.max, this.max / 2);
+
+                let size = this.max;
+                while (size > 1) {
+                    let half = size / 2;
+                    let scale = roughness * size;
+
+                    // Square step
+                    for (let y = half; y < this.max; y += size) {
+                        for (let x = half; x < this.max; x += size) {
+                            let ave = (this.get(x-half, y-half) + this.get(x+half, y-half) + 
+                                       this.get(x+half, y+half) + this.get(x-half, y+half)) / 4;
+                            this.set(x, y, ave + (Math.random() * 2 - 1) * scale);
+                        }
+                    }
+
+                    // Diamond step
+                    for (let y = 0; y <= this.max; y += half) {
+                        for (let x = (y + half) % size; x <= this.max; x += size) {
+                            let ave = (this.get(x, y-half) + this.get(x, y+half) + 
+                                       this.get(x-half, y) + this.get(x+half, y)) / 4;
+                            this.set(x, y, ave + (Math.random() * 2 - 1) * scale);
+                        }
+                    }
+                    size /= 2;
+                }
+            }
+
+            erode(iterations) {
+                for (let i = 0; i < iterations; i++) {
+                    let x = Math.random() * this.max;
+                    let y = Math.random() * this.max;
+                    let sed = 0;
+                    let water = 1;
+                    let vel = 1;
+
+                    for (let step = 0; step < 30; step++) {
+                        let ix = Math.floor(x), iy = Math.floor(y);
+                        let h0 = this.get(ix, iy);
+                        // Simple gradient
+                        let dx = this.get(ix+1, iy) - h0;
+                        let dy = this.get(ix, iy+1) - h0;
+                        
+                        if (dx === 0 && dy === 0) break;
+
+                        let nx = x - dx * 0.5;
+                        let ny = y - dy * 0.5;
+                        if (nx < 0 || nx >= this.max || ny < 0 || ny >= this.max) break;
+
+                        let h1 = this.get(Math.floor(nx), Math.floor(ny));
+                        let dh = h1 - h0;
+
+                        if (dh < 0) { // Moving downhill
+                            let capacity = -dh * water * vel * 10;
+                            if (sed < capacity) {
+                                let deposit = (capacity - sed) * 0.1;
+                                this.set(ix, iy, h0 - deposit);
+                                sed += deposit;
+                            }
+                        } else { // Moving uphill (fill pits)
+                            let deposit = Math.min(dh, sed);
+                            this.set(ix, iy, h0 + deposit);
+                            sed -= deposit;
+                        }
+                        
+                        x = nx; y = ny;
+                        water *= 0.99;
+                    }
+                }
+            }
+
+            render() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                ctx.fillStyle = '#050505';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const scaleX = canvas.width / (this.size * 1.5);
+                const scaleY = scaleX * 0.5; // Flatten for perspective
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height * 0.4;
+
+                // Render back to front (Painter's algorithm)
+                for (let y = 0; y < this.size; y++) {
+                    ctx.beginPath();
+                    for (let x = 0; x < this.size; x++) {
+                        let h = this.get(x, y);
+                        
+                        // Isometric projection
+                        let px = (x - y) * scaleX + centerX;
+                        let py = (x + y) * scaleY + centerY - (h * 1.5);
+
+                        if (x === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    
+                    // Style based on "depth"
+                    let brightness = Math.floor((y / this.size) * 150) + 100;
+                    ctx.strokeStyle = `rgb(${brightness * 0.6}, ${brightness * 0.8}, ${brightness})`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        async function run() {
+            const terrain = new Terrain(7); // 129x129
+            
+            status.innerText = "Generating Heightmap...";
+            await new Promise(r => setTimeout(r, 10));
+            terrain.generate(0.8);
+
+            status.innerText = "Simulating Erosion...";
+            await new Promise(r => setTimeout(r, 10));
+            terrain.erode(40000);
+
+            status.innerText = "Finalizing Render...";
+            terrain.render();
+            status.innerText = "Complete.";
+        }
+
+        run();
+        window.addEventListener('resize', () => run());
+    </script>
+</body>
+</html>
