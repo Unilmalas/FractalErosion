@@ -7,5 +7,4 @@ Fractal terrain generation and and droplet erosion
 - terrain visualization via direction of slope and lightning (Buchin et al.)
 
 next steps:
-- clean up this mess (still have not gotten to it)
 - further improve stroke rendering pencil-like (Salsbury et al.) (furry-strokes for now)
